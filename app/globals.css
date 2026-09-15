@@ -1,0 +1,44 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-body: "Inter", sans-serif;
+  --font-display: "Playfair Display", serif;
+}
+
+html,
+body {
+  background-color: #090a10;
+  color: #e4e4e7;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #27272a #090a10;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: #090a10;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: #27272a;
+  border-radius: 8px;
+  border: 2px solid #090a10;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: #d4af37;
+}
+
+@layer utilities {
+  .luxury-card {
+    @apply bg-panel border border-line rounded-2xl;
+  }
+}

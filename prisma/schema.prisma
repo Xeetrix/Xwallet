@@ -1,0 +1,95 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  CLIENT
+}
+
+enum UserStatus {
+  PENDING_APPROVAL
+  ACTIVE
+  SUSPENDED
+}
+
+enum TransactionType {
+  DEPOSIT
+  WITHDRAWAL
+  MANUAL_CREDIT
+  MANUAL_DEBIT
+}
+
+enum TransactionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model User {
+  id           String     @id @default(cuid())
+  fullName     String
+  email        String     @unique
+  passwordHash String
+  role         Role       @default(CLIENT)
+  status       UserStatus @default(PENDING_APPROVAL)
+  createdAt    DateTime   @default(now())
+
+  balances     UserBalance[]
+  transactions Transaction[]
+}
+
+model Asset {
+  id       String  @id @default(cuid())
+  symbol   String  @unique
+  name     String
+  logoUrl  String?
+  isActive Boolean @default(true)
+
+  networkAddresses NetworkAddress[]
+  balances         UserBalance[]
+  transactions     Transaction[]
+}
+
+model NetworkAddress {
+  id            String  @id @default(cuid())
+  assetId       String
+  asset         Asset   @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  networkName   String
+  walletAddress String
+  isActive      Boolean @default(true)
+
+  @@unique([assetId, networkName])
+}
+
+model UserBalance {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  assetId     String
+  asset       Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  balance     Decimal  @default(0) @db.Decimal(24, 8)
+  lastUpdated DateTime @updatedAt
+
+  @@unique([userId, assetId])
+}
+
+model Transaction {
+  id            String            @id @default(cuid())
+  userId        String
+  user          User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  assetId       String
+  asset         Asset             @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  networkName   String?
+  type          TransactionType
+  amount        Decimal           @db.Decimal(24, 8)
+  txHash        String?
+  status        TransactionStatus @default(PENDING)
+  referenceNote String?
+  createdAt     DateTime          @default(now())
+}
