@@ -18,7 +18,11 @@ export interface SessionPayload {
 }
 
 function getSecret() {
-  const secret = process.env.JWT_SECRET || "xwallet-asia-dev-secret-change-me";
+  const secret =
+    process.env.JWT_SECRET ||
+    process.env.AUTH_SECRET ||
+    process.env.NEXTAUTH_SECRET ||
+    "xwallet-asia-dev-secret-change-me";
   return new TextEncoder().encode(secret);
 }
 
@@ -44,12 +48,20 @@ export async function createSessionCookie(payload: SessionPayload): Promise<void
     sameSite: "lax",
     path: "/",
     maxAge: SESSION_MAX_AGE_SECONDS,
+    // Unset by default (host-only cookie, works fine on a single domain).
+    // Set COOKIE_DOMAIN=".xwallet.asia" to share the session between the
+    // apex domain and www so a client isn't logged out switching between them.
+    domain: process.env.COOKIE_DOMAIN || undefined,
   });
 }
 
 export async function destroySessionCookie(): Promise<void> {
   const cookieStore = await cookies();
-  cookieStore.delete(SESSION_COOKIE_NAME);
+  cookieStore.delete({
+    name: SESSION_COOKIE_NAME,
+    path: "/",
+    domain: process.env.COOKIE_DOMAIN || undefined,
+  });
 }
 
 export async function getSession(): Promise<SessionPayload | null> {

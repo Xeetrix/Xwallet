@@ -10,7 +10,11 @@ interface SessionPayload {
 }
 
 function getSecret() {
-  const secret = process.env.JWT_SECRET || "xwallet-asia-dev-secret-change-me";
+  const secret =
+    process.env.JWT_SECRET ||
+    process.env.AUTH_SECRET ||
+    process.env.NEXTAUTH_SECRET ||
+    "xwallet-asia-dev-secret-change-me";
   return new TextEncoder().encode(secret);
 }
 
