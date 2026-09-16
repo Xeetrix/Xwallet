@@ -32,11 +32,14 @@ export async function registerUser(
     return { error: "An account with this email already exists." };
   }
 
-  // The very first person to register on the platform becomes the
-  // administrator, since there is no other way to bootstrap an admin
-  // account without shell/database access.
-  const userCount = await prisma.user.count();
-  const isFirstUser = userCount === 0;
+  // If an ADMIN_BOOTSTRAP_EMAIL is configured, the master admin is
+  // provisioned by lib/bootstrap.ts and registrations always go through
+  // normal approval. Otherwise, fall back to promoting the very first
+  // registrant so the platform is never permanently adminless — but only
+  // one of these two paths is ever active, so there's no race between them.
+  const bootstrapConfigured = Boolean(process.env.ADMIN_BOOTSTRAP_EMAIL);
+  const userCount = bootstrapConfigured ? 1 : await prisma.user.count();
+  const isFirstUser = !bootstrapConfigured && userCount === 0;
 
   const passwordHash = await hashPassword(password);
   const user = await prisma.user.create({
