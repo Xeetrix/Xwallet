@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition, useActionState } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Plus, Check, X } from "lucide-react";
 import type { Asset, NetworkAddress } from "@prisma/client";
@@ -99,7 +100,13 @@ function AssetCard({ asset }: { asset: AssetWithAddresses }) {
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
           {asset.logoUrl ? (
-            <img src={asset.logoUrl} alt={asset.symbol} className="w-8 h-8 rounded-full" />
+            <Image
+              src={asset.logoUrl}
+              alt={asset.symbol}
+              width={32}
+              height={32}
+              className="w-8 h-8 rounded-full object-cover"
+            />
           ) : (
             <div className="w-8 h-8 rounded-full bg-gold/10 border border-gold/20 flex items-center justify-center text-[10px] text-gold font-medium">
               {asset.symbol.slice(0, 3)}

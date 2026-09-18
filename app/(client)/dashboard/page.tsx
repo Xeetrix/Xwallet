@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { redirect } from "next/navigation";
 import { ArrowDownToLine, ArrowUpRight, Wallet } from "lucide-react";
 import { getSession } from "@/lib/auth";
@@ -75,7 +76,13 @@ export default async function DashboardPage() {
               >
                 <div className="flex items-center gap-3">
                   {b.asset.logoUrl ? (
-                    <img src={b.asset.logoUrl} alt={b.asset.symbol} className="w-8 h-8 rounded-full" />
+                    <Image
+                      src={b.asset.logoUrl}
+                      alt={b.asset.symbol}
+                      width={32}
+                      height={32}
+                      className="w-8 h-8 rounded-full object-cover"
+                    />
                   ) : (
                     <div className="w-8 h-8 rounded-full bg-gold/10 border border-gold/20 flex items-center justify-center text-[10px] text-gold font-medium">
                       {b.asset.symbol.slice(0, 3)}
