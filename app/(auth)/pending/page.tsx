@@ -20,7 +20,7 @@ export default async function PendingPage() {
       <form action={logoutUser}>
         <button
           type="submit"
-          className="text-sm text-zinc-400 hover:text-gold transition border border-line rounded-lg px-4 py-2"
+          className="text-sm text-zinc-400 hover:text-gold transition border border-zinc-800/60 rounded-lg px-4 py-2"
         >
           Sign out
         </button>

@@ -39,6 +39,10 @@ body {
 
 @layer utilities {
   .luxury-card {
-    @apply bg-panel border border-line rounded-2xl;
+    @apply backdrop-blur-xl bg-zinc-900/40 border border-zinc-800/60 shadow-2xl shadow-black/40 rounded-2xl;
+  }
+
+  .luxury-input {
+    @apply w-full rounded-lg bg-black/30 border border-zinc-800/60 px-3.5 py-2.5 text-sm text-zinc-100 outline-none transition focus:border-gold/60 focus:bg-black/50;
   }
 }

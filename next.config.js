@@ -1,9 +1,12 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   images: {
-    // Asset logo URLs are admin-supplied (see components/AssetManagement.tsx)
-    // and can point to any HTTPS host, so there's no fixed domain to allowlist.
-    remotePatterns: [{ protocol: "https", hostname: "**" }],
+    // Only the crypto icon CDN is ever loaded as a remote image now that
+    // asset logos are resolved automatically from ticker symbols instead
+    // of admin-entered URLs (see components/CryptoIcon.tsx).
+    remotePatterns: [
+      { protocol: "https", hostname: "cdn.jsdelivr.net", pathname: "/npm/cryptocurrency-icons@0.18.1/**" },
+    ],
   },
 };
 

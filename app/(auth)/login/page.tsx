@@ -21,7 +21,7 @@ export default function LoginPage() {
             name="email"
             type="email"
             required
-            className="w-full rounded-lg bg-obsidian border border-line px-3.5 py-2.5 text-sm text-zinc-100 outline-none focus:border-gold/60 transition"
+            className="luxury-input"
             placeholder="you@example.com"
           />
         </div>
@@ -31,7 +31,7 @@ export default function LoginPage() {
             name="password"
             type="password"
             required
-            className="w-full rounded-lg bg-obsidian border border-line px-3.5 py-2.5 text-sm text-zinc-100 outline-none focus:border-gold/60 transition"
+            className="luxury-input"
             placeholder="••••••••"
           />
         </div>

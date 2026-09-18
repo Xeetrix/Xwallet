@@ -13,7 +13,7 @@ const config: Config = {
         line: "#27272A",
         gold: {
           DEFAULT: "#D4AF37",
-          light: "#E8C766",
+          light: "#E5C06E",
           dark: "#A8862A",
         },
         emerald: {

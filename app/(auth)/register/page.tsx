@@ -25,7 +25,7 @@ export default function RegisterPage() {
             name="fullName"
             type="text"
             required
-            className="w-full rounded-lg bg-obsidian border border-line px-3.5 py-2.5 text-sm text-zinc-100 outline-none focus:border-gold/60 transition"
+            className="luxury-input"
             placeholder="Jonathan Lee"
           />
         </div>
@@ -35,7 +35,7 @@ export default function RegisterPage() {
             name="email"
             type="email"
             required
-            className="w-full rounded-lg bg-obsidian border border-line px-3.5 py-2.5 text-sm text-zinc-100 outline-none focus:border-gold/60 transition"
+            className="luxury-input"
             placeholder="you@example.com"
           />
         </div>
@@ -49,7 +49,7 @@ export default function RegisterPage() {
               type="password"
               required
               minLength={8}
-              className="w-full rounded-lg bg-obsidian border border-line px-3.5 py-2.5 text-sm text-zinc-100 outline-none focus:border-gold/60 transition"
+              className="luxury-input"
               placeholder="••••••••"
             />
           </div>
@@ -62,7 +62,7 @@ export default function RegisterPage() {
               type="password"
               required
               minLength={8}
-              className="w-full rounded-lg bg-obsidian border border-line px-3.5 py-2.5 text-sm text-zinc-100 outline-none focus:border-gold/60 transition"
+              className="luxury-input"
               placeholder="••••••••"
             />
           </div>

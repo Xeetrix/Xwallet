@@ -1,11 +1,11 @@
 "use client";
 
 import { useState, useTransition, useActionState } from "react";
-import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Plus, Check, X } from "lucide-react";
 import type { Asset, NetworkAddress } from "@prisma/client";
 import { cn } from "@/lib/utils";
+import CryptoIcon from "@/components/CryptoIcon";
 import {
   createAsset,
   configureAssetAddress,
@@ -36,43 +36,40 @@ export default function AssetManagement({ assets }: { assets: AssetWithAddresses
 
 function CreateAssetPanel() {
   const [state, formAction, pending] = useActionState(createAsset, initialState);
+  const [symbolPreview, setSymbolPreview] = useState("");
 
   return (
     <div className="luxury-card p-6">
       <h2 className="font-serif text-lg text-zinc-100 mb-4">Add New Asset</h2>
-      <form action={formAction} className="grid grid-cols-1 sm:grid-cols-4 gap-3 items-end">
+      <p className="text-xs text-zinc-500 mb-4">
+        The badge icon is resolved automatically from the ticker symbol — no logo upload needed.
+      </p>
+      <form action={formAction} className="grid grid-cols-1 sm:grid-cols-[auto_1fr_1fr_auto] gap-3 items-end">
+        <div className="hidden sm:flex flex-col items-center justify-center">
+          <label className="block text-xs uppercase tracking-wider text-zinc-500 mb-1.5 opacity-0">
+            Icon
+          </label>
+          <CryptoIcon symbol={symbolPreview || "?"} size={40} />
+        </div>
         <div>
           <label className="block text-xs uppercase tracking-wider text-zinc-500 mb-1.5">Symbol</label>
           <input
             name="symbol"
             required
             placeholder="USDT"
-            className="w-full rounded-lg bg-obsidian border border-line px-3 py-2.5 text-sm text-zinc-100 outline-none focus:border-gold/60"
+            value={symbolPreview}
+            onChange={(e) => setSymbolPreview(e.target.value)}
+            className="luxury-input uppercase"
           />
         </div>
         <div>
           <label className="block text-xs uppercase tracking-wider text-zinc-500 mb-1.5">Name</label>
-          <input
-            name="name"
-            required
-            placeholder="Tether USD"
-            className="w-full rounded-lg bg-obsidian border border-line px-3 py-2.5 text-sm text-zinc-100 outline-none focus:border-gold/60"
-          />
-        </div>
-        <div>
-          <label className="block text-xs uppercase tracking-wider text-zinc-500 mb-1.5">
-            Logo URL
-          </label>
-          <input
-            name="logoUrl"
-            placeholder="https://..."
-            className="w-full rounded-lg bg-obsidian border border-line px-3 py-2.5 text-sm text-zinc-100 outline-none focus:border-gold/60"
-          />
+          <input name="name" required placeholder="Tether USD" className="luxury-input" />
         </div>
         <button
           type="submit"
           disabled={pending}
-          className="inline-flex items-center justify-center gap-2 rounded-lg bg-gold hover:bg-gold-light text-obsidian font-medium text-sm py-2.5 transition disabled:opacity-50"
+          className="inline-flex items-center justify-center gap-2 rounded-lg bg-gold hover:bg-gold-light text-obsidian font-medium text-sm py-2.5 px-4 transition disabled:opacity-50"
         >
           <Plus className="w-4 h-4" />
           Add Asset
@@ -99,19 +96,7 @@ function AssetCard({ asset }: { asset: AssetWithAddresses }) {
     <div className="luxury-card p-6">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
-          {asset.logoUrl ? (
-            <Image
-              src={asset.logoUrl}
-              alt={asset.symbol}
-              width={32}
-              height={32}
-              className="w-8 h-8 rounded-full object-cover"
-            />
-          ) : (
-            <div className="w-8 h-8 rounded-full bg-gold/10 border border-gold/20 flex items-center justify-center text-[10px] text-gold font-medium">
-              {asset.symbol.slice(0, 3)}
-            </div>
-          )}
+          <CryptoIcon symbol={asset.symbol} size={36} />
           <div>
             <p className="text-sm text-zinc-100">{asset.name}</p>
             <p className="text-xs text-zinc-500">{asset.symbol}</p>
@@ -135,7 +120,7 @@ function AssetCard({ asset }: { asset: AssetWithAddresses }) {
         {asset.networkAddresses.map((addr) => (
           <div
             key={addr.id}
-            className="flex items-center justify-between rounded-lg border border-line px-3.5 py-2.5"
+            className="flex items-center justify-between rounded-lg border border-zinc-800/60 px-3.5 py-2.5"
           >
             <div className="min-w-0">
               <p className="text-xs text-zinc-500 mb-0.5">{addr.networkName}</p>
@@ -196,12 +181,7 @@ function AddressForm({ assetId }: { assetId: string }) {
       <input type="hidden" name="assetId" value={assetId} />
       <div>
         <label className="block text-xs uppercase tracking-wider text-zinc-500 mb-1.5">Network</label>
-        <input
-          name="networkName"
-          required
-          placeholder="TRC20"
-          className="w-full rounded-lg bg-obsidian border border-line px-3 py-2 text-sm text-zinc-100 outline-none focus:border-gold/60"
-        />
+        <input name="networkName" required placeholder="TRC20" className="luxury-input" />
       </div>
       <div>
         <label className="block text-xs uppercase tracking-wider text-zinc-500 mb-1.5">
@@ -211,7 +191,7 @@ function AddressForm({ assetId }: { assetId: string }) {
           name="walletAddress"
           required
           placeholder="T9yD14..."
-          className="w-full rounded-lg bg-obsidian border border-line px-3 py-2 text-sm text-zinc-100 outline-none focus:border-gold/60 font-mono"
+          className="luxury-input font-mono"
         />
       </div>
       <div className="flex gap-2">
@@ -226,7 +206,7 @@ function AddressForm({ assetId }: { assetId: string }) {
         <button
           type="button"
           onClick={() => setOpen(false)}
-          className="rounded-lg border border-line px-3 text-zinc-400 hover:text-zinc-200 transition"
+          className="rounded-lg border border-zinc-800/60 px-3 text-zinc-400 hover:text-zinc-200 transition"
         >
           <X className="w-4 h-4" />
         </button>

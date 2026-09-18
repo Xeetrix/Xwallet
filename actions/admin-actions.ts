@@ -31,15 +31,16 @@ export async function createAsset(
 
   const symbol = String(formData.get("symbol") ?? "").trim().toUpperCase();
   const name = String(formData.get("name") ?? "").trim();
-  const logoUrl = String(formData.get("logoUrl") ?? "").trim();
 
   if (!symbol || !name) {
     return { error: "Symbol and name are required.", success: false };
   }
 
   try {
+    // Asset badges are resolved automatically from the ticker symbol at
+    // render time (see components/CryptoIcon.tsx) — no logo URL to store.
     await prisma.asset.create({
-      data: { symbol, name, logoUrl: logoUrl || null },
+      data: { symbol, name },
     });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {

@@ -1,7 +1,6 @@
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-4 py-12 bg-obsidian relative overflow-hidden">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(212,175,55,0.08),transparent_60%)]" />
+    <div className="min-h-screen flex flex-col items-center justify-center px-4 py-12">
       <div className="relative z-10 w-full max-w-md">
         <div className="mb-10 text-center">
           <div className="inline-flex items-center gap-2 mb-2">
