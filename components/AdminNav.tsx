@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutGrid, Coins } from "lucide-react";
+import { LayoutGrid, Coins, ScrollText } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const ADMIN_NAV_ITEMS = [
   { href: "/admin", label: "Console", icon: LayoutGrid, exact: true },
+  { href: "/admin/transactions", label: "Transactions", icon: ScrollText, exact: false },
   { href: "/admin/assets", label: "Assets", icon: Coins, exact: false },
 ];
 

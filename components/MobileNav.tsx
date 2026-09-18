@@ -3,7 +3,17 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Coins, LayoutDashboard, LayoutGrid, LogOut, Menu, ShieldCheck, X, type LucideIcon } from "lucide-react";
+import {
+  Coins,
+  LayoutDashboard,
+  LayoutGrid,
+  LogOut,
+  Menu,
+  ScrollText,
+  ShieldCheck,
+  X,
+  type LucideIcon,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface NavItem {
@@ -21,6 +31,7 @@ const NAV_SETS: Record<"client" | "admin", NavItem[]> = {
   client: [{ href: "/dashboard", label: "Portfolio", icon: LayoutDashboard, exact: true }],
   admin: [
     { href: "/admin", label: "Console", icon: LayoutGrid, exact: true },
+    { href: "/admin/transactions", label: "Transactions", icon: ScrollText, exact: false },
     { href: "/admin/assets", label: "Assets", icon: Coins, exact: false },
   ],
 };
