@@ -4,7 +4,7 @@
 
 :root {
   --font-body: "Inter", sans-serif;
-  --font-display: "Playfair Display", serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
 }
 
 html,
