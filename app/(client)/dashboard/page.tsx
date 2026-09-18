@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { fetchUsdPrices } from "@/lib/pricing";
 import DepositModal from "@/components/DepositModal";
 import TransferModal from "@/components/TransferModal";
+import WithdrawModal from "@/components/WithdrawModal";
 import ConvertModal from "@/components/ConvertModal";
 import CryptoIcon from "@/components/CryptoIcon";
 import CopyTag from "@/components/CopyTag";
@@ -72,6 +73,7 @@ export default async function DashboardPage() {
         <div className="flex flex-wrap items-center gap-3">
           <ConvertModal balances={serializedBalances} assets={assets} />
           <TransferModal balances={serializedBalances} />
+          <WithdrawModal balances={serializedBalances} />
           <DepositModal assets={assets} />
         </div>
       </div>

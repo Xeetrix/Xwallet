@@ -1,10 +1,11 @@
 import Link from "next/link";
-import { Clock, Coins, ScrollText, ShieldCheck, Users, Vault } from "lucide-react";
+import { ArrowUpFromLine, Clock, ScrollText, ShieldCheck, Users, Vault } from "lucide-react";
 import type { Prisma, UserStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { fetchUsdPrices } from "@/lib/pricing";
 import UserStatusActions from "@/components/UserStatusActions";
 import DepositReviewActions from "@/components/DepositReviewActions";
+import WithdrawalReviewActions from "@/components/WithdrawalReviewActions";
 import ManualAdjustModal from "@/components/ManualAdjustModal";
 import StatCard from "@/components/StatCard";
 import StatusBadge from "@/components/StatusBadge";
@@ -42,32 +43,44 @@ export default async function AdminConsolePage({
       : {}),
   };
 
-  const [pendingUsers, otherUsers, allClientsForAdjustment, pendingDeposits, assets, allBalances] =
-    await Promise.all([
-      prisma.user.findMany({ where: { status: "PENDING_APPROVAL" }, orderBy: { createdAt: "asc" } }),
-      prisma.user.findMany({
-        where: directoryWhere,
-        orderBy: { fullName: "asc" },
-      }),
-      // Unfiltered client list for the manual-adjustment picker, so a
-      // directory search/status filter above doesn't also narrow who can
-      // be selected for a balance adjustment. Selected down to just the
-      // fields the (client-rendered) modal needs — never pass a full User
-      // row to a "use client" component, since it would serialize
-      // passwordHash straight into the page source.
-      prisma.user.findMany({
-        where: { role: "CLIENT", status: { in: DIRECTORY_STATUSES } },
-        select: { id: true, fullName: true, email: true },
-        orderBy: { fullName: "asc" },
-      }),
-      prisma.transaction.findMany({
-        where: { type: "DEPOSIT", status: "PENDING" },
-        include: { user: true, asset: true },
-        orderBy: { createdAt: "asc" },
-      }),
-      prisma.asset.findMany({ where: { isActive: true }, orderBy: { symbol: "asc" } }),
-      prisma.userBalance.findMany({ include: { asset: true } }),
-    ]);
+  const [
+    pendingUsers,
+    otherUsers,
+    allClientsForAdjustment,
+    pendingDeposits,
+    pendingWithdrawals,
+    assets,
+    allBalances,
+  ] = await Promise.all([
+    prisma.user.findMany({ where: { status: "PENDING_APPROVAL" }, orderBy: { createdAt: "asc" } }),
+    prisma.user.findMany({
+      where: directoryWhere,
+      orderBy: { fullName: "asc" },
+    }),
+    // Unfiltered client list for the manual-adjustment picker, so a
+    // directory search/status filter above doesn't also narrow who can
+    // be selected for a balance adjustment. Selected down to just the
+    // fields the (client-rendered) modal needs — never pass a full User
+    // row to a "use client" component, since it would serialize
+    // passwordHash straight into the page source.
+    prisma.user.findMany({
+      where: { role: "CLIENT", status: { in: DIRECTORY_STATUSES } },
+      select: { id: true, fullName: true, email: true },
+      orderBy: { fullName: "asc" },
+    }),
+    prisma.transaction.findMany({
+      where: { type: "DEPOSIT", status: "PENDING" },
+      include: { user: true, asset: true },
+      orderBy: { createdAt: "asc" },
+    }),
+    prisma.transaction.findMany({
+      where: { type: "WITHDRAWAL", status: "PENDING" },
+      include: { user: true, asset: true },
+      orderBy: { createdAt: "asc" },
+    }),
+    prisma.asset.findMany({ where: { isActive: true }, orderBy: { symbol: "asc" } }),
+    prisma.userBalance.findMany({ include: { asset: true } }),
+  ]);
 
   const activeClientCount = await prisma.user.count({ where: { role: "CLIENT", status: "ACTIVE" } });
 
@@ -99,7 +112,7 @@ export default async function AdminConsolePage({
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-10">
         <StatCard
-          label="Total Custody Value"
+          label="Custody Value"
           icon={Vault}
           tone="gold"
           valueTone="gold"
@@ -121,11 +134,11 @@ export default async function AdminConsolePage({
           value={pendingUsers.length}
         />
         <StatCard
-          label="Pending Deposits"
-          icon={Coins}
-          tone={pendingDeposits.length > 0 ? "gold" : "zinc"}
-          valueTone={pendingDeposits.length > 0 ? "gold" : "zinc"}
-          value={pendingDeposits.length}
+          label="Pending Reviews"
+          icon={ArrowUpFromLine}
+          tone={pendingDeposits.length + pendingWithdrawals.length > 0 ? "gold" : "zinc"}
+          valueTone={pendingDeposits.length + pendingWithdrawals.length > 0 ? "gold" : "zinc"}
+          value={pendingDeposits.length + pendingWithdrawals.length}
         />
         <StatCard label="Active Clients" icon={Users} tone="emerald" valueTone="emerald" value={activeClientCount} />
       </div>
@@ -188,6 +201,54 @@ export default async function AdminConsolePage({
                   </div>
                 </div>
                 <DepositReviewActions transactionId={t.id} />
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="luxury-card p-6 mb-8">
+        <h2 className="font-serif text-lg text-zinc-100 mb-5">Withdrawal Requests</h2>
+        {pendingWithdrawals.length === 0 ? (
+          <p className="text-sm text-zinc-500">No withdrawals awaiting processing.</p>
+        ) : (
+          <div className="space-y-3">
+            {pendingWithdrawals.map((t) => (
+              <div
+                key={t.id}
+                className="flex items-center justify-between rounded-xl border border-zinc-800/60 px-4 py-3.5 gap-4"
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <CryptoIcon symbol={t.asset.symbol} size={32} />
+                  <div className="min-w-0">
+                    <p className="text-sm text-zinc-100 truncate">
+                      <Link href={`/admin/clients/${t.userId}`} className="hover:text-gold transition">
+                        {t.user.fullName}
+                      </Link>{" "}
+                      <span className="text-zinc-500 font-mono">
+                        · {Number(t.amount).toLocaleString()} {t.asset.symbol}
+                      </span>
+                      {t.feeAmount && (
+                        <span className="text-zinc-600 font-mono">
+                          {" "}
+                          (incl. {Number(t.feeAmount).toLocaleString()} fee)
+                        </span>
+                      )}
+                    </p>
+                    <div className="mt-1 flex items-center gap-2">
+                      <span className="text-[11px] text-zinc-600 uppercase tracking-wide">
+                        {t.networkName}
+                      </span>
+                      {t.destinationAddress && (
+                        <CopyTag
+                          value={t.destinationAddress}
+                          label={`${t.destinationAddress.slice(0, 8)}…${t.destinationAddress.slice(-6)}`}
+                        />
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <WithdrawalReviewActions transactionId={t.id} />
               </div>
             ))}
           </div>

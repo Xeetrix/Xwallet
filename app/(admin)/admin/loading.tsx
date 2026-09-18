@@ -18,7 +18,7 @@ export default function AdminConsoleLoading() {
         ))}
       </div>
 
-      {Array.from({ length: 3 }).map((_, i) => (
+      {Array.from({ length: 4 }).map((_, i) => (
         <div key={i} className="luxury-card p-6 mb-8 space-y-4 last:mb-0">
           <div className="skeleton h-5 w-48" />
           <div className="skeleton h-16 w-full rounded-xl" />

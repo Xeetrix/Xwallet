@@ -166,6 +166,83 @@ export async function transferAsset(
   return { error: null, success: true };
 }
 
+export interface WithdrawActionState {
+  error: string | null;
+  success: boolean;
+}
+
+export async function requestWithdrawal(
+  _prevState: WithdrawActionState,
+  formData: FormData
+): Promise<WithdrawActionState> {
+  const session = await requireSession();
+
+  if (session.role !== "CLIENT" || session.status !== "ACTIVE") {
+    return { error: "You must be an active client to request a withdrawal.", success: false };
+  }
+
+  const assetId = String(formData.get("assetId") ?? "");
+  const networkName = String(formData.get("networkName") ?? "").trim().toUpperCase();
+  const destinationAddress = String(formData.get("destinationAddress") ?? "").trim();
+  const amountRaw = String(formData.get("amount") ?? "");
+  const amount = Number(amountRaw);
+
+  if (!assetId || !networkName || !destinationAddress) {
+    return { error: "All fields are required.", success: false };
+  }
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return { error: "Enter a valid withdrawal amount.", success: false };
+  }
+
+  const asset = await prisma.asset.findUnique({ where: { id: assetId } });
+  if (!asset || !asset.isActive) {
+    return { error: "Selected asset is not available.", success: false };
+  }
+
+  const gasFee = getNetworkGasFee(asset.symbol, networkName);
+  const totalDebit = amount + gasFee;
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      // Reserve the funds immediately (same conditional-update pattern used
+      // by transfers and swaps) so a client can't request more than one
+      // withdrawal against the same balance before either is reviewed.
+      const debited = await tx.userBalance.updateMany({
+        where: { userId: session.sub, assetId, balance: { gte: totalDebit } },
+        data: { balance: { decrement: totalDebit } },
+      });
+      if (debited.count === 0) {
+        throw new InsufficientBalanceError();
+      }
+
+      await tx.transaction.create({
+        data: {
+          userId: session.sub,
+          assetId,
+          networkName,
+          type: "WITHDRAWAL",
+          amount: totalDebit,
+          feeAmount: gasFee,
+          destinationAddress,
+          status: "PENDING",
+          referenceNote: `Withdrawal request: ${amount.toLocaleString(undefined, { maximumFractionDigits: 8 })} ${asset.symbol} to ${destinationAddress} — includes ${gasFee} ${asset.symbol} network fee (${networkName})`,
+        },
+      });
+    });
+  } catch (error) {
+    if (error instanceof InsufficientBalanceError) {
+      return {
+        error: `Insufficient balance. This withdrawal requires ${totalDebit.toLocaleString(undefined, { maximumFractionDigits: 8 })} ${asset.symbol} (${amount} amount + ${gasFee} network fee).`,
+        success: false,
+      };
+    }
+    throw error;
+  }
+
+  revalidatePath("/dashboard");
+  return { error: null, success: true };
+}
+
 export interface SwapQuote {
   rate: number;
   grossReceive: number;
