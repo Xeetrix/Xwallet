@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth";
-import { getNetworkGasFee, SWAP_FEE_RATE } from "@/lib/fees";
+import { computeNetworkFee, TRANSFER_FEE_RATE, WITHDRAWAL_FEE_RATE, CONVERT_FEE_RATE } from "@/lib/fees";
 import { fetchUsdPrices } from "@/lib/pricing";
 
 export interface DepositActionState {
@@ -12,6 +12,38 @@ export interface DepositActionState {
 }
 
 class InsufficientBalanceError extends Error {}
+class InsufficientGasAssetError extends Error {
+  constructor(public gasAssetSymbol: string) {
+    super(`Insufficient ${gasAssetSymbol} balance for network fee.`);
+  }
+}
+
+export interface NetworkFeeQuoteResult {
+  gasAssetSymbol: string;
+  feeInGasAsset: number;
+  feeRate: number;
+}
+
+/**
+ * Live fee preview for the Transfer/Withdraw/Convert modals — lets the UI
+ * show "X TRX network fee" before the client submits, without duplicating
+ * the pricing/network lookup logic client-side.
+ */
+export async function getNetworkFeeQuote(
+  assetSymbol: string,
+  networkName: string,
+  amount: number,
+  kind: "TRANSFER" | "WITHDRAWAL" | "CONVERT"
+): Promise<NetworkFeeQuoteResult | { error: string }> {
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return { error: "Enter a valid amount." };
+  }
+  const feeRate =
+    kind === "WITHDRAWAL" ? WITHDRAWAL_FEE_RATE : kind === "TRANSFER" ? TRANSFER_FEE_RATE : CONVERT_FEE_RATE;
+  const result = await computeNetworkFee(amount, assetSymbol, networkName, feeRate);
+  if ("error" in result) return result;
+  return { ...result, feeRate };
+}
 
 export async function submitDeposit(
   _prevState: DepositActionState,
@@ -75,7 +107,7 @@ export async function transferAsset(
 
   const recipientEmail = String(formData.get("recipientEmail") ?? "").trim().toLowerCase();
   const assetId = String(formData.get("assetId") ?? "");
-  const networkName = String(formData.get("networkName") ?? "").trim();
+  const networkName = String(formData.get("networkName") ?? "").trim().toUpperCase();
   const amountRaw = String(formData.get("amount") ?? "");
   const amount = Number(amountRaw);
 
@@ -103,20 +135,45 @@ export async function transferAsset(
     return { error: "Recipient account is not active.", success: false };
   }
 
-  const gasFee = getNetworkGasFee(asset.symbol, networkName);
-  const totalDebit = amount + gasFee;
+  const feeQuote = await computeNetworkFee(amount, asset.symbol, networkName, TRANSFER_FEE_RATE);
+  if ("error" in feeQuote) {
+    return { error: feeQuote.error, success: false };
+  }
+  const { gasAssetSymbol, feeInGasAsset } = feeQuote;
+
+  const gasAsset = await prisma.asset.findUnique({ where: { symbol: gasAssetSymbol } });
+  if (!gasAsset || !gasAsset.isActive) {
+    return {
+      error: `${gasAssetSymbol} is required to pay the ${networkName} network fee but isn't available on this platform.`,
+      success: false,
+    };
+  }
 
   try {
     await prisma.$transaction(async (tx) => {
       // Atomic conditional update: only debits if the balance still covers
-      // amount + fee at the moment of the write, closing the same
+      // the amount at the moment of the write, closing the same
       // check-then-act race as the admin balance-adjustment actions.
       const debited = await tx.userBalance.updateMany({
-        where: { userId: session.sub, assetId, balance: { gte: totalDebit } },
-        data: { balance: { decrement: totalDebit } },
+        where: { userId: session.sub, assetId, balance: { gte: amount } },
+        data: { balance: { decrement: amount } },
       });
       if (debited.count === 0) {
         throw new InsufficientBalanceError();
+      }
+
+      // The network fee comes out of a separate balance — the chain's
+      // native gas asset — never the asset being transferred, mirroring
+      // real on-chain gas. This conditional update runs after the one
+      // above inside the same transaction, so when the gas asset and the
+      // transferred asset are the same, it correctly sees the
+      // already-reduced balance and requires the combined total.
+      const feeDebited = await tx.userBalance.updateMany({
+        where: { userId: session.sub, assetId: gasAsset.id, balance: { gte: feeInGasAsset } },
+        data: { balance: { decrement: feeInGasAsset } },
+      });
+      if (feeDebited.count === 0) {
+        throw new InsufficientGasAssetError(gasAssetSymbol);
       }
 
       await tx.userBalance.upsert({
@@ -131,11 +188,12 @@ export async function transferAsset(
           assetId,
           networkName,
           type: "TRANSFER_SENT",
-          amount: totalDebit,
-          feeAmount: gasFee,
+          amount,
+          feeAmount: feeInGasAsset,
+          feeAssetId: gasAsset.id,
           counterpartyEmail: recipient.email,
           status: "APPROVED",
-          referenceNote: `Sent ${amount.toLocaleString(undefined, { maximumFractionDigits: 8 })} ${asset.symbol} to ${recipient.email} — includes ${gasFee} ${asset.symbol} network fee (${networkName})`,
+          referenceNote: `Sent ${amount.toLocaleString(undefined, { maximumFractionDigits: 8 })} ${asset.symbol} to ${recipient.email} via ${networkName} — network fee ${feeInGasAsset.toLocaleString(undefined, { maximumFractionDigits: 8 })} ${gasAssetSymbol}`,
         },
       });
 
@@ -155,7 +213,13 @@ export async function transferAsset(
   } catch (error) {
     if (error instanceof InsufficientBalanceError) {
       return {
-        error: `Insufficient balance. This transfer requires ${totalDebit.toLocaleString(undefined, { maximumFractionDigits: 8 })} ${asset.symbol} (${amount} amount + ${gasFee} network fee).`,
+        error: `Insufficient ${asset.symbol} balance for this transfer.`,
+        success: false,
+      };
+    }
+    if (error instanceof InsufficientGasAssetError) {
+      return {
+        error: `Insufficient ${gasAssetSymbol} balance to cover the ${networkName} network fee (${feeInGasAsset.toLocaleString(undefined, { maximumFractionDigits: 8 })} ${gasAssetSymbol} required).`,
         success: false,
       };
     }
@@ -199,8 +263,19 @@ export async function requestWithdrawal(
     return { error: "Selected asset is not available.", success: false };
   }
 
-  const gasFee = getNetworkGasFee(asset.symbol, networkName);
-  const totalDebit = amount + gasFee;
+  const feeQuote = await computeNetworkFee(amount, asset.symbol, networkName, WITHDRAWAL_FEE_RATE);
+  if ("error" in feeQuote) {
+    return { error: feeQuote.error, success: false };
+  }
+  const { gasAssetSymbol, feeInGasAsset } = feeQuote;
+
+  const gasAsset = await prisma.asset.findUnique({ where: { symbol: gasAssetSymbol } });
+  if (!gasAsset || !gasAsset.isActive) {
+    return {
+      error: `${gasAssetSymbol} is required to pay the ${networkName} network fee but isn't available on this platform.`,
+      success: false,
+    };
+  }
 
   try {
     await prisma.$transaction(async (tx) => {
@@ -208,11 +283,21 @@ export async function requestWithdrawal(
       // by transfers and swaps) so a client can't request more than one
       // withdrawal against the same balance before either is reviewed.
       const debited = await tx.userBalance.updateMany({
-        where: { userId: session.sub, assetId, balance: { gte: totalDebit } },
-        data: { balance: { decrement: totalDebit } },
+        where: { userId: session.sub, assetId, balance: { gte: amount } },
+        data: { balance: { decrement: amount } },
       });
       if (debited.count === 0) {
         throw new InsufficientBalanceError();
+      }
+
+      // Network fee reserved from a separate balance — the chain's native
+      // gas asset — same reasoning as transfers.
+      const feeDebited = await tx.userBalance.updateMany({
+        where: { userId: session.sub, assetId: gasAsset.id, balance: { gte: feeInGasAsset } },
+        data: { balance: { decrement: feeInGasAsset } },
+      });
+      if (feeDebited.count === 0) {
+        throw new InsufficientGasAssetError(gasAssetSymbol);
       }
 
       await tx.transaction.create({
@@ -221,18 +306,22 @@ export async function requestWithdrawal(
           assetId,
           networkName,
           type: "WITHDRAWAL",
-          amount: totalDebit,
-          feeAmount: gasFee,
+          amount,
+          feeAmount: feeInGasAsset,
+          feeAssetId: gasAsset.id,
           destinationAddress,
           status: "PENDING",
-          referenceNote: `Withdrawal request: ${amount.toLocaleString(undefined, { maximumFractionDigits: 8 })} ${asset.symbol} to ${destinationAddress} — includes ${gasFee} ${asset.symbol} network fee (${networkName})`,
+          referenceNote: `Withdrawal request: ${amount.toLocaleString(undefined, { maximumFractionDigits: 8 })} ${asset.symbol} to ${destinationAddress} via ${networkName} — network fee ${feeInGasAsset.toLocaleString(undefined, { maximumFractionDigits: 8 })} ${gasAssetSymbol}`,
         },
       });
     });
   } catch (error) {
     if (error instanceof InsufficientBalanceError) {
+      return { error: `Insufficient ${asset.symbol} balance for this withdrawal.`, success: false };
+    }
+    if (error instanceof InsufficientGasAssetError) {
       return {
-        error: `Insufficient balance. This withdrawal requires ${totalDebit.toLocaleString(undefined, { maximumFractionDigits: 8 })} ${asset.symbol} (${amount} amount + ${gasFee} network fee).`,
+        error: `Insufficient ${gasAssetSymbol} balance to cover the ${networkName} network fee (${feeInGasAsset.toLocaleString(undefined, { maximumFractionDigits: 8 })} ${gasAssetSymbol} required).`,
         success: false,
       };
     }
@@ -245,16 +334,17 @@ export async function requestWithdrawal(
 
 export interface SwapQuote {
   rate: number;
-  grossReceive: number;
-  feeAmount: number;
-  netReceive: number;
+  receiveAmount: number;
+  gasAssetSymbol: string;
+  feeInGasAsset: number;
   feeRate: number;
 }
 
 export async function getSwapQuote(
   fromSymbol: string,
   toSymbol: string,
-  amount: number
+  amount: number,
+  networkName: string
 ): Promise<SwapQuote | { error: string }> {
   if (!Number.isFinite(amount) || amount <= 0) {
     return { error: "Enter a valid amount." };
@@ -271,12 +361,21 @@ export async function getSwapQuote(
     return { error: "Live pricing is unavailable for this pair right now." };
   }
 
-  const rate = fromPrice / toPrice;
-  const grossReceive = amount * rate;
-  const feeAmount = grossReceive * SWAP_FEE_RATE;
-  const netReceive = grossReceive - feeAmount;
+  const feeQuote = await computeNetworkFee(amount, fromSymbol, networkName, CONVERT_FEE_RATE);
+  if ("error" in feeQuote) {
+    return { error: feeQuote.error };
+  }
 
-  return { rate, grossReceive, feeAmount, netReceive, feeRate: SWAP_FEE_RATE };
+  const rate = fromPrice / toPrice;
+  const receiveAmount = amount * rate;
+
+  return {
+    rate,
+    receiveAmount,
+    gasAssetSymbol: feeQuote.gasAssetSymbol,
+    feeInGasAsset: feeQuote.feeInGasAsset,
+    feeRate: CONVERT_FEE_RATE,
+  };
 }
 
 export interface SwapActionState {
@@ -296,11 +395,12 @@ export async function convertAsset(
 
   const fromAssetId = String(formData.get("fromAssetId") ?? "");
   const toAssetId = String(formData.get("toAssetId") ?? "");
+  const networkName = String(formData.get("networkName") ?? "").trim().toUpperCase();
   const amountRaw = String(formData.get("amount") ?? "");
   const amount = Number(amountRaw);
 
-  if (!fromAssetId || !toAssetId || fromAssetId === toAssetId) {
-    return { error: "Select two different assets.", success: false };
+  if (!fromAssetId || !toAssetId || !networkName || fromAssetId === toAssetId) {
+    return { error: "Select two different assets and a network.", success: false };
   }
   if (!Number.isFinite(amount) || amount <= 0) {
     return { error: "Enter a valid amount.", success: false };
@@ -314,11 +414,19 @@ export async function convertAsset(
     return { error: "Selected asset is not available.", success: false };
   }
 
-  const quote = await getSwapQuote(fromAsset.symbol, toAsset.symbol, amount);
+  const quote = await getSwapQuote(fromAsset.symbol, toAsset.symbol, amount, networkName);
   if ("error" in quote) {
     return { error: quote.error, success: false };
   }
-  const { rate, feeAmount, netReceive, feeRate } = quote;
+  const { rate, receiveAmount, gasAssetSymbol, feeInGasAsset, feeRate } = quote;
+
+  const gasAsset = await prisma.asset.findUnique({ where: { symbol: gasAssetSymbol } });
+  if (!gasAsset || !gasAsset.isActive) {
+    return {
+      error: `${gasAssetSymbol} is required to pay the ${networkName} network fee but isn't available on this platform.`,
+      success: false,
+    };
+  }
 
   try {
     await prisma.$transaction(async (tx) => {
@@ -330,22 +438,37 @@ export async function convertAsset(
         throw new InsufficientBalanceError();
       }
 
+      // Network fee comes out of a separate balance — the chain's native
+      // gas asset — never the asset being converted. Runs after the debit
+      // above inside the same transaction, so when the gas asset is also
+      // the "from" asset, it correctly requires the combined total.
+      const feeDebited = await tx.userBalance.updateMany({
+        where: { userId: session.sub, assetId: gasAsset.id, balance: { gte: feeInGasAsset } },
+        data: { balance: { decrement: feeInGasAsset } },
+      });
+      if (feeDebited.count === 0) {
+        throw new InsufficientGasAssetError(gasAssetSymbol);
+      }
+
       await tx.userBalance.upsert({
         where: { userId_assetId: { userId: session.sub, assetId: toAssetId } },
-        create: { userId: session.sub, assetId: toAssetId, balance: netReceive },
-        update: { balance: { increment: netReceive } },
+        create: { userId: session.sub, assetId: toAssetId, balance: receiveAmount },
+        update: { balance: { increment: receiveAmount } },
       });
 
-      const rateNote = `1 ${fromAsset.symbol} ≈ ${rate.toLocaleString(undefined, { maximumFractionDigits: 8 })} ${toAsset.symbol} (platform fee ${(feeRate * 100).toFixed(2)}%)`;
+      const rateNote = `1 ${fromAsset.symbol} ≈ ${rate.toLocaleString(undefined, { maximumFractionDigits: 8 })} ${toAsset.symbol}`;
 
       await tx.transaction.create({
         data: {
           userId: session.sub,
           assetId: fromAssetId,
+          networkName,
           type: "SWAP_DEBIT",
           amount,
+          feeAmount: feeInGasAsset,
+          feeAssetId: gasAsset.id,
           status: "APPROVED",
-          referenceNote: `Converted ${amount.toLocaleString(undefined, { maximumFractionDigits: 8 })} ${fromAsset.symbol} → ${netReceive.toLocaleString(undefined, { maximumFractionDigits: 8 })} ${toAsset.symbol} at ${rateNote}`,
+          referenceNote: `Converted ${amount.toLocaleString(undefined, { maximumFractionDigits: 8 })} ${fromAsset.symbol} → ${receiveAmount.toLocaleString(undefined, { maximumFractionDigits: 8 })} ${toAsset.symbol} at ${rateNote} — network fee ${feeInGasAsset.toLocaleString(undefined, { maximumFractionDigits: 8 })} ${gasAssetSymbol} (${(feeRate * 100).toFixed(2)}%)`,
         },
       });
 
@@ -353,9 +476,9 @@ export async function convertAsset(
         data: {
           userId: session.sub,
           assetId: toAssetId,
+          networkName,
           type: "SWAP_CREDIT",
-          amount: netReceive,
-          feeAmount,
+          amount: receiveAmount,
           status: "APPROVED",
           referenceNote: `Received from converting ${amount.toLocaleString(undefined, { maximumFractionDigits: 8 })} ${fromAsset.symbol} at ${rateNote}`,
         },
@@ -364,6 +487,12 @@ export async function convertAsset(
   } catch (error) {
     if (error instanceof InsufficientBalanceError) {
       return { error: `Insufficient ${fromAsset.symbol} balance.`, success: false };
+    }
+    if (error instanceof InsufficientGasAssetError) {
+      return {
+        error: `Insufficient ${gasAssetSymbol} balance to cover the ${networkName} network fee (${feeInGasAsset.toLocaleString(undefined, { maximumFractionDigits: 8 })} ${gasAssetSymbol} required).`,
+        success: false,
+      };
     }
     throw error;
   }

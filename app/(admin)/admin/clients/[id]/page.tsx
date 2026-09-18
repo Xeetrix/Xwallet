@@ -36,7 +36,7 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
     }),
     prisma.transaction.findMany({
       where: { userId: id },
-      include: { asset: true },
+      include: { asset: true, feeAsset: true },
       orderBy: { createdAt: "desc" },
       take: 100,
     }),
@@ -194,9 +194,9 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
                     <td className="py-3 text-zinc-100 font-mono tabular-nums">
                       {Number(t.amount).toLocaleString(undefined, { maximumFractionDigits: 8 })}
                     </td>
-                    <td className="py-3 text-zinc-500 font-mono tabular-nums">
+                    <td className="py-3 text-zinc-500 font-mono tabular-nums whitespace-nowrap">
                       {t.feeAmount
-                        ? Number(t.feeAmount).toLocaleString(undefined, { maximumFractionDigits: 8 })
+                        ? `${Number(t.feeAmount).toLocaleString(undefined, { maximumFractionDigits: 8 })} ${t.feeAsset?.symbol ?? t.asset.symbol}`
                         : "—"}
                     </td>
                     <td className="py-3 text-zinc-500 truncate max-w-[10rem]">

@@ -3,8 +3,12 @@
 import { useState, useMemo, useEffect, useActionState } from "react";
 import { ArrowRightLeft, Check, X } from "lucide-react";
 import type { Asset, NetworkAddress, UserBalance } from "@prisma/client";
-import { transferAsset, type TransferActionState } from "@/actions/client-actions";
-import { getNetworkGasFee } from "@/lib/fees";
+import {
+  transferAsset,
+  getNetworkFeeQuote,
+  type TransferActionState,
+  type NetworkFeeQuoteResult,
+} from "@/actions/client-actions";
 import CryptoIcon from "@/components/CryptoIcon";
 
 // balance is a plain number here, not Prisma's Decimal — the server
@@ -21,15 +25,23 @@ export default function TransferModal({ balances }: { balances: BalanceWithAsset
   const [assetId, setAssetId] = useState(balances[0]?.assetId ?? "");
   const [networkName, setNetworkName] = useState(balances[0]?.asset.networkAddresses[0]?.networkName ?? "");
   const [amountRaw, setAmountRaw] = useState("");
+  const [feeQuote, setFeeQuote] = useState<NetworkFeeQuoteResult | null>(null);
+  const [feeError, setFeeError] = useState<string | null>(null);
+  const [feeLoading, setFeeLoading] = useState(false);
   const [state, formAction, pending] = useActionState(transferAsset, initialState);
 
   const selectedBalance = useMemo(() => balances.find((b) => b.assetId === assetId), [balances, assetId]);
   const availableNetworks = selectedBalance?.asset.networkAddresses ?? [];
   const amount = Number(amountRaw);
-  const gasFee = selectedBalance ? getNetworkGasFee(selectedBalance.asset.symbol, networkName) : 0;
-  const totalDebit = Number.isFinite(amount) && amount > 0 ? amount + gasFee : 0;
   const availableBalance = selectedBalance ? Number(selectedBalance.balance) : 0;
-  const insufficientLocally = totalDebit > 0 && totalDebit > availableBalance;
+  const insufficientAmount = amount > 0 && amount > availableBalance;
+
+  const gasBalance = useMemo(
+    () => (feeQuote ? balances.find((b) => b.asset.symbol === feeQuote.gasAssetSymbol) : undefined),
+    [balances, feeQuote]
+  );
+  const gasBalanceAmount = gasBalance ? Number(gasBalance.balance) : 0;
+  const insufficientGas = feeQuote !== null && feeQuote.feeInGasAsset > gasBalanceAmount;
 
   useEffect(() => {
     if (availableNetworks.length > 0 && !availableNetworks.some((n) => n.networkName === networkName)) {
@@ -37,6 +49,35 @@ export default function TransferModal({ balances }: { balances: BalanceWithAsset
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [assetId]);
+
+  useEffect(() => {
+    if (!selectedBalance || !networkName || !Number.isFinite(amount) || amount <= 0) {
+      setFeeQuote(null);
+      setFeeError(null);
+      return;
+    }
+
+    let cancelled = false;
+    setFeeLoading(true);
+    const timeout = setTimeout(() => {
+      getNetworkFeeQuote(selectedBalance.asset.symbol, networkName, amount, "TRANSFER").then((result) => {
+        if (cancelled) return;
+        setFeeLoading(false);
+        if ("error" in result) {
+          setFeeQuote(null);
+          setFeeError(result.error);
+        } else {
+          setFeeQuote(result);
+          setFeeError(null);
+        }
+      });
+    }, 500);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timeout);
+    };
+  }, [selectedBalance, networkName, amount]);
 
   useEffect(() => {
     if (state.success) {
@@ -74,7 +115,7 @@ export default function TransferModal({ balances }: { balances: BalanceWithAsset
 
         <h3 className="font-serif text-lg text-zinc-100 mb-1">Transfer to Another Client</h3>
         <p className="text-sm text-zinc-500 mb-5">
-          Instant internal transfer. A network fee applies based on the selected chain.
+          Instant internal transfer. The network fee is paid separately, in that chain&apos;s native asset.
         </p>
 
         {state.success ? (
@@ -129,7 +170,9 @@ export default function TransferModal({ balances }: { balances: BalanceWithAsset
                   value={networkName}
                   onChange={(e) => setNetworkName(e.target.value)}
                   className="luxury-input"
+                  disabled={availableNetworks.length === 0}
                 >
+                  {availableNetworks.length === 0 && <option value="">No networks</option>}
                   {availableNetworks.map((n) => (
                     <option key={n.id} value={n.networkName}>
                       {n.networkName}
@@ -169,33 +212,48 @@ export default function TransferModal({ balances }: { balances: BalanceWithAsset
               </div>
             </div>
 
-            {totalDebit > 0 && selectedBalance && (
+            {feeQuote && (
               <div className="rounded-lg border border-zinc-800/60 bg-black/30 p-3.5 space-y-1.5 text-xs">
                 <div className="flex justify-between text-zinc-500">
-                  <span>Network fee ({networkName})</span>
-                  <span className="font-mono tabular-nums text-zinc-300">
-                    {gasFee} {selectedBalance.asset.symbol}
+                  <span>Network fee ({(feeQuote.feeRate * 100).toFixed(2)}%, paid in {feeQuote.gasAssetSymbol})</span>
+                  <span
+                    className={`font-mono tabular-nums ${insufficientGas ? "text-red-400" : "text-zinc-300"}`}
+                  >
+                    {feeQuote.feeInGasAsset.toLocaleString(undefined, { maximumFractionDigits: 8 })}{" "}
+                    {feeQuote.gasAssetSymbol}
                   </span>
                 </div>
-                <div className="flex justify-between font-medium pt-1.5 border-t border-zinc-800/60">
-                  <span className="text-zinc-400">Total debit</span>
-                  <span
-                    className={`font-mono tabular-nums ${insufficientLocally ? "text-red-400" : "text-gold"}`}
-                  >
-                    {totalDebit.toLocaleString(undefined, { maximumFractionDigits: 8 })}{" "}
-                    {selectedBalance.asset.symbol}
+                <div className="flex justify-between text-zinc-600">
+                  <span>Your {feeQuote.gasAssetSymbol} balance</span>
+                  <span className="font-mono tabular-nums">
+                    {gasBalanceAmount.toLocaleString(undefined, { maximumFractionDigits: 8 })}
                   </span>
                 </div>
               </div>
             )}
 
-            {insufficientLocally && (
+            {feeLoading && <p className="text-xs text-zinc-600">Calculating network fee…</p>}
+
+            {feeError && (
               <p className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
-                Insufficient balance for this amount plus the network fee.
+                {feeError}
               </p>
             )}
 
-            {state.error && !insufficientLocally && (
+            {insufficientAmount && (
+              <p className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
+                Insufficient {selectedBalance?.asset.symbol} balance for this amount.
+              </p>
+            )}
+
+            {insufficientGas && !insufficientAmount && (
+              <p className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
+                You need {feeQuote?.gasAssetSymbol} to pay the network fee — insufficient {feeQuote?.gasAssetSymbol}{" "}
+                balance.
+              </p>
+            )}
+
+            {state.error && !insufficientAmount && !insufficientGas && (
               <p className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
                 {state.error}
               </p>
@@ -203,7 +261,14 @@ export default function TransferModal({ balances }: { balances: BalanceWithAsset
 
             <button
               type="submit"
-              disabled={pending || insufficientLocally || !selectedBalance}
+              disabled={
+                pending ||
+                insufficientAmount ||
+                insufficientGas ||
+                feeLoading ||
+                !feeQuote ||
+                availableNetworks.length === 0
+              }
               className="w-full rounded-lg bg-gold hover:bg-gold-light text-obsidian font-medium text-sm py-2.5 transition disabled:opacity-50"
             >
               {pending ? "Sending..." : "Send Transfer"}
