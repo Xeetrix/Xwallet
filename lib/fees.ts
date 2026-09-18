@@ -1,41 +1,64 @@
-// Internal client-to-client transfers move value between two ledger rows —
-// no blockchain transaction is actually broadcast. This fee is still
-// enforced as a deliberate platform policy (modeled on real network costs),
-// not a technical necessity, so it's a configurable flat table rather than
-// anything derived from live gas prices.
-const NETWORK_GAS_FEES: Record<string, number> = {
-  "USDT:TRC20": 2,
-  "USDT:ERC20": 8,
-  "USDT:BEP20": 1,
-  "USDC:TRC20": 2,
-  "USDC:ERC20": 8,
-  "USDC:BEP20": 1,
-  "BTC:BTC": 0.0001,
-  "ETH:ERC20": 0.002,
-  "SOL:SOL": 0.005,
-  "BNB:BEP20": 0.0005,
-  "XRP:XRP": 0.2,
-  "ADA:ADA": 1,
-  "TRX:TRC20": 5,
+import { fetchUsdPrices } from "@/lib/pricing";
+
+// Maps each network to the asset that actually pays its on-chain gas in
+// real life — e.g. TRX pays for every TRC20 transfer no matter which token
+// moves. Transfers, withdrawals, and conversions all charge their platform
+// fee in this asset, never the asset being moved, mirroring real gas: a
+// client needs a balance of the network's native asset to use it at all.
+const GAS_ASSET_BY_NETWORK: Record<string, string> = {
+  TRC20: "TRX",
+  ERC20: "ETH",
+  BEP20: "BNB",
+  BTC: "BTC",
+  ETH: "ETH",
+  SOL: "SOL",
+  XRP: "XRP",
+  ADA: "ADA",
+  TRX: "TRX",
+  BNB: "BNB",
 };
 
-// Fallback when the specific asset+network pair isn't in the table above,
-// keyed by asset symbol alone.
-const DEFAULT_GAS_FEE_BY_SYMBOL: Record<string, number> = {
-  BTC: 0.0001,
-  ETH: 0.002,
-  SOL: 0.005,
-  BNB: 0.0005,
-  XRP: 0.2,
-  ADA: 1,
-  TRX: 5,
-};
+export const TRANSFER_FEE_RATE = 0.005; // 0.5%
+export const WITHDRAWAL_FEE_RATE = 0.01; // 1%
+export const CONVERT_FEE_RATE = 0.005; // 0.5%
 
-/** Flat platform spread applied to every in-portal asset conversion. */
-export const SWAP_FEE_RATE = 0.01;
+export function getGasAssetSymbol(networkName: string): string | null {
+  return GAS_ASSET_BY_NETWORK[networkName.trim().toUpperCase()] ?? null;
+}
 
-export function getNetworkGasFee(symbol: string, networkName: string): number {
-  const key = `${symbol.toUpperCase()}:${networkName.toUpperCase()}`;
-  if (key in NETWORK_GAS_FEES) return NETWORK_GAS_FEES[key];
-  return DEFAULT_GAS_FEE_BY_SYMBOL[symbol.toUpperCase()] ?? 0.5;
+export interface NetworkFeeQuote {
+  gasAssetSymbol: string;
+  feeInGasAsset: number;
+}
+
+/**
+ * Computes a network fee as `feeRate` of the USD value of `amount` (priced
+ * in `assetSymbol`), converted into the network's native gas asset via live
+ * pricing. Never throws — returns an { error } object if the network isn't
+ * recognized or live pricing is unavailable for either asset, so callers
+ * can surface a clear message instead of mis-charging silently.
+ */
+export async function computeNetworkFee(
+  amount: number,
+  assetSymbol: string,
+  networkName: string,
+  feeRate: number
+): Promise<NetworkFeeQuote | { error: string }> {
+  const gasAssetSymbol = getGasAssetSymbol(networkName);
+  if (!gasAssetSymbol) {
+    return { error: `"${networkName}" is not a supported network.` };
+  }
+
+  const prices = await fetchUsdPrices([assetSymbol, gasAssetSymbol]);
+  const assetPrice = prices[assetSymbol.toUpperCase()];
+  const gasPrice = prices[gasAssetSymbol.toUpperCase()];
+
+  if (!assetPrice || !gasPrice) {
+    return { error: "Live pricing is unavailable right now — please try again shortly." };
+  }
+
+  const feeUsd = amount * assetPrice * feeRate;
+  const feeInGasAsset = feeUsd / gasPrice;
+
+  return { gasAssetSymbol, feeInGasAsset };
 }

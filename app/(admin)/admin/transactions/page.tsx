@@ -86,7 +86,7 @@ export default async function TransactionsLedgerPage({
     prisma.transaction.count({ where }),
     prisma.transaction.findMany({
       where,
-      include: { user: true, asset: true },
+      include: { user: true, asset: true, feeAsset: true },
       orderBy: { createdAt: "desc" },
       skip: (filters.page - 1) * PAGE_SIZE,
       take: PAGE_SIZE,
@@ -221,9 +221,9 @@ export default async function TransactionsLedgerPage({
                     <td className="py-3 text-zinc-100 font-mono tabular-nums">
                       {Number(t.amount).toLocaleString(undefined, { maximumFractionDigits: 8 })}
                     </td>
-                    <td className="py-3 text-zinc-500 font-mono tabular-nums">
+                    <td className="py-3 text-zinc-500 font-mono tabular-nums whitespace-nowrap">
                       {t.feeAmount
-                        ? Number(t.feeAmount).toLocaleString(undefined, { maximumFractionDigits: 8 })
+                        ? `${Number(t.feeAmount).toLocaleString(undefined, { maximumFractionDigits: 8 })} ${t.feeAsset?.symbol ?? t.asset.symbol}`
                         : "—"}
                     </td>
                     <td className="py-3">

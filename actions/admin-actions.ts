@@ -190,9 +190,18 @@ export async function reviewWithdrawal(
       }
 
       if (action === "REJECT") {
-        // The withdrawal amount (including the network fee) was already
-        // debited when the client submitted the request — refund it now
-        // that the request won't be fulfilled.
+        // The withdrawal amount was already debited when the client
+        // submitted the request — refund it now that the request won't be
+        // fulfilled. The network fee was reserved separately, from the
+        // network's gas asset, and needs refunding too — combined into
+        // this same refund when the gas asset happens to be the asset
+        // being withdrawn (e.g. withdrawing BTC over the BTC network).
+        const sameAsset = transaction.feeAssetId === transaction.assetId;
+        const mainRefund =
+          sameAsset && transaction.feeAmount
+            ? transaction.amount.plus(transaction.feeAmount)
+            : transaction.amount;
+
         await tx.userBalance.upsert({
           where: {
             userId_assetId: { userId: transaction.userId, assetId: transaction.assetId },
@@ -200,12 +209,28 @@ export async function reviewWithdrawal(
           create: {
             userId: transaction.userId,
             assetId: transaction.assetId,
-            balance: transaction.amount,
+            balance: mainRefund,
           },
           update: {
-            balance: { increment: transaction.amount },
+            balance: { increment: mainRefund },
           },
         });
+
+        if (transaction.feeAssetId && transaction.feeAmount && !sameAsset) {
+          await tx.userBalance.upsert({
+            where: {
+              userId_assetId: { userId: transaction.userId, assetId: transaction.feeAssetId },
+            },
+            create: {
+              userId: transaction.userId,
+              assetId: transaction.feeAssetId,
+              balance: transaction.feeAmount,
+            },
+            update: {
+              balance: { increment: transaction.feeAmount },
+            },
+          });
+        }
       }
     });
   } catch (error) {

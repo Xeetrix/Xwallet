@@ -59,6 +59,7 @@ model Asset {
   networkAddresses NetworkAddress[]
   balances         UserBalance[]
   transactions     Transaction[]
+  feeTransactions  Transaction[] @relation("TransactionFeeAsset")
 }
 
 model NetworkAddress {
@@ -94,6 +95,8 @@ model Transaction {
   type              TransactionType
   amount            Decimal           @db.Decimal(24, 8)
   feeAmount         Decimal?          @db.Decimal(24, 8)
+  feeAssetId        String?
+  feeAsset          Asset?            @relation("TransactionFeeAsset", fields: [feeAssetId], references: [id])
   counterpartyEmail String?
   destinationAddress String?
   txHash            String?

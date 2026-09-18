@@ -75,7 +75,7 @@ export default async function AdminConsolePage({
     }),
     prisma.transaction.findMany({
       where: { type: "WITHDRAWAL", status: "PENDING" },
-      include: { user: true, asset: true },
+      include: { user: true, asset: true, feeAsset: true },
       orderBy: { createdAt: "asc" },
     }),
     prisma.asset.findMany({ where: { isActive: true }, orderBy: { symbol: "asc" } }),
@@ -231,7 +231,7 @@ export default async function AdminConsolePage({
                       {t.feeAmount && (
                         <span className="text-zinc-600 font-mono">
                           {" "}
-                          (incl. {Number(t.feeAmount).toLocaleString()} fee)
+                          (+ {Number(t.feeAmount).toLocaleString()} {t.feeAsset?.symbol ?? t.asset.symbol} fee)
                         </span>
                       )}
                     </p>
