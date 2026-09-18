@@ -157,6 +157,69 @@ export async function reviewDeposit(
   return { error: null, success: true };
 }
 
+export async function reviewWithdrawal(
+  transactionId: string,
+  action: "APPROVE" | "REJECT",
+  txHash?: string
+): Promise<ActionResult> {
+  await requireAdminSession();
+
+  const transaction = await prisma.transaction.findUnique({ where: { id: transactionId } });
+  if (!transaction || transaction.type !== "WITHDRAWAL") {
+    return { error: "Withdrawal not found.", success: false };
+  }
+
+  const nextStatus = action === "APPROVE" ? "APPROVED" : "REJECTED";
+  const trimmedTxHash = txHash?.trim();
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      // Conditional update guards against two concurrent reviews of the same
+      // withdrawal (double-click, two admin tabs) racing past a separate
+      // read-then-write check and double-refunding the balance on reject.
+      const updated = await tx.transaction.updateMany({
+        where: { id: transactionId, status: "PENDING" },
+        data: {
+          status: nextStatus,
+          ...(action === "APPROVE" && trimmedTxHash ? { txHash: trimmedTxHash } : {}),
+        },
+      });
+
+      if (updated.count === 0) {
+        throw new AlreadyReviewedError();
+      }
+
+      if (action === "REJECT") {
+        // The withdrawal amount (including the network fee) was already
+        // debited when the client submitted the request — refund it now
+        // that the request won't be fulfilled.
+        await tx.userBalance.upsert({
+          where: {
+            userId_assetId: { userId: transaction.userId, assetId: transaction.assetId },
+          },
+          create: {
+            userId: transaction.userId,
+            assetId: transaction.assetId,
+            balance: transaction.amount,
+          },
+          update: {
+            balance: { increment: transaction.amount },
+          },
+        });
+      }
+    });
+  } catch (error) {
+    if (error instanceof AlreadyReviewedError) {
+      return { error: "This withdrawal has already been reviewed.", success: false };
+    }
+    throw error;
+  }
+
+  revalidatePath("/admin");
+  revalidatePath("/dashboard");
+  return { error: null, success: true };
+}
+
 export async function manualBalanceAdjustment(
   _prevState: ActionResult,
   formData: FormData

@@ -95,6 +95,7 @@ model Transaction {
   amount            Decimal           @db.Decimal(24, 8)
   feeAmount         Decimal?          @db.Decimal(24, 8)
   counterpartyEmail String?
+  destinationAddress String?
   txHash            String?
   status            TransactionStatus @default(PENDING)
   referenceNote     String?
