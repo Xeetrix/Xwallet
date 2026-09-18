@@ -1,10 +1,13 @@
-import Image from "next/image";
 import { redirect } from "next/navigation";
-import { ArrowDownToLine, ArrowUpRight, Wallet } from "lucide-react";
+import { ArrowDownToLine, ArrowUpRight, CircleDollarSign, Layers, ShieldCheck, Wallet } from "lucide-react";
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { cn } from "@/lib/utils";
+import { fetchUsdPrices } from "@/lib/pricing";
 import DepositModal from "@/components/DepositModal";
+import CryptoIcon from "@/components/CryptoIcon";
+import CopyTag from "@/components/CopyTag";
+import StatusBadge from "@/components/StatusBadge";
+import StatCard from "@/components/StatCard";
 
 export default async function DashboardPage() {
   const session = await getSession();
@@ -29,6 +32,20 @@ export default async function DashboardPage() {
     }),
   ]);
 
+  const prices = await fetchUsdPrices(balances.map((b) => b.asset.symbol));
+
+  const holdings = balances.map((b) => {
+    const amount = Number(b.balance);
+    const price = prices[b.asset.symbol.toUpperCase()];
+    const usdValue = typeof price === "number" ? amount * price : null;
+    return { balance: b, amount, price, usdValue };
+  });
+
+  const totalUsdValue = holdings.reduce((sum, h) => sum + (h.usdValue ?? 0), 0);
+  const pricedHoldingsCount = holdings.filter((h) => h.usdValue !== null).length;
+  const hasAnyPricing = pricedHoldingsCount > 0;
+  const hasFullPricing = holdings.length > 0 && pricedHoldingsCount === holdings.length;
+
   const pendingDepositCount = transactions.filter(
     (t) => t.type === "DEPOSIT" && t.status === "PENDING"
   ).length;
@@ -45,59 +62,90 @@ export default async function DashboardPage() {
         <DepositModal assets={assets} />
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-10">
-        <div className="luxury-card p-5">
-          <p className="text-xs text-zinc-500 uppercase tracking-wider mb-2">Active Positions</p>
-          <p className="font-serif text-2xl text-zinc-50">{balances.length}</p>
-        </div>
-        <div className="luxury-card p-5">
-          <p className="text-xs text-zinc-500 uppercase tracking-wider mb-2">Pending Deposits</p>
-          <p className="font-serif text-2xl text-gold">{pendingDepositCount}</p>
-        </div>
-        <div className="luxury-card p-5">
-          <p className="text-xs text-zinc-500 uppercase tracking-wider mb-2">Account Status</p>
-          <p className="font-serif text-2xl text-emerald">Active</p>
-        </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-10">
+        <StatCard
+          label="Estimated Net Worth"
+          icon={CircleDollarSign}
+          tone="gold"
+          valueTone="gold"
+          value={
+            holdings.length === 0
+              ? "$0.00"
+              : hasAnyPricing
+                ? totalUsdValue.toLocaleString(undefined, {
+                    style: "currency",
+                    currency: "USD",
+                    maximumFractionDigits: 2,
+                  })
+                : "—"
+          }
+        />
+        <StatCard label="Active Positions" icon={Layers} value={balances.length} />
+        <StatCard
+          label="Pending Deposits"
+          icon={Wallet}
+          tone={pendingDepositCount > 0 ? "gold" : "zinc"}
+          valueTone={pendingDepositCount > 0 ? "gold" : "zinc"}
+          value={pendingDepositCount}
+        />
+        <StatCard label="Account Status" icon={ShieldCheck} tone="emerald" valueTone="emerald" value="Active" />
       </div>
 
       <div className="luxury-card p-6 mb-8">
-        <h2 className="font-serif text-lg text-zinc-100 mb-5 flex items-center gap-2">
-          <Wallet className="w-4 h-4 text-gold" />
-          Asset Holdings
-        </h2>
-        {balances.length === 0 ? (
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="font-serif text-lg text-zinc-100 flex items-center gap-2">
+            <Wallet className="w-4 h-4 text-gold" />
+            Asset Holdings
+          </h2>
+          {!hasFullPricing && holdings.length > 0 && (
+            <span className="text-[11px] text-zinc-600">USD values shown where price data is available</span>
+          )}
+        </div>
+        {holdings.length === 0 ? (
           <p className="text-sm text-zinc-500">No holdings yet. Submit a deposit to get started.</p>
         ) : (
           <div className="space-y-3">
-            {balances.map((b) => (
-              <div
-                key={b.id}
-                className="flex items-center justify-between rounded-xl border border-line px-4 py-3.5"
-              >
-                <div className="flex items-center gap-3">
-                  {b.asset.logoUrl ? (
-                    <Image
-                      src={b.asset.logoUrl}
-                      alt={b.asset.symbol}
-                      width={32}
-                      height={32}
-                      className="w-8 h-8 rounded-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-8 h-8 rounded-full bg-gold/10 border border-gold/20 flex items-center justify-center text-[10px] text-gold font-medium">
-                      {b.asset.symbol.slice(0, 3)}
+            {holdings.map(({ balance: b, amount, usdValue }) => {
+              const allocationPct = totalUsdValue > 0 && usdValue !== null ? (usdValue / totalUsdValue) * 100 : 0;
+              return (
+                <div
+                  key={b.id}
+                  className="rounded-xl border border-zinc-800/60 px-4 py-3.5 transition hover:border-gold/20"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <CryptoIcon symbol={b.asset.symbol} size={32} />
+                      <div className="min-w-0">
+                        <p className="text-sm text-zinc-100 truncate">{b.asset.name}</p>
+                        <p className="text-xs text-zinc-500">{b.asset.symbol}</p>
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="font-serif text-zinc-50">
+                        {amount.toLocaleString(undefined, { maximumFractionDigits: 8 })}
+                      </p>
+                      <p className="text-xs text-zinc-500">
+                        {usdValue !== null
+                          ? usdValue.toLocaleString(undefined, {
+                              style: "currency",
+                              currency: "USD",
+                              maximumFractionDigits: 2,
+                            })
+                          : "—"}
+                      </p>
+                    </div>
+                  </div>
+                  {totalUsdValue > 0 && usdValue !== null && (
+                    <div className="mt-3 h-1 w-full rounded-full bg-zinc-800/60 overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-gold-dark to-gold"
+                        style={{ width: `${Math.max(allocationPct, 1.5)}%` }}
+                      />
                     </div>
                   )}
-                  <div>
-                    <p className="text-sm text-zinc-100">{b.asset.name}</p>
-                    <p className="text-xs text-zinc-500">{b.asset.symbol}</p>
-                  </div>
                 </div>
-                <p className="font-serif text-zinc-50">
-                  {Number(b.balance).toLocaleString(undefined, { maximumFractionDigits: 8 })}
-                </p>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
@@ -110,17 +158,18 @@ export default async function DashboardPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-left text-xs uppercase tracking-wider text-zinc-500 border-b border-line">
+                <tr className="text-left text-xs uppercase tracking-wider text-zinc-500 border-b border-zinc-800/60">
                   <th className="pb-3 font-normal">Type</th>
                   <th className="pb-3 font-normal">Asset</th>
                   <th className="pb-3 font-normal">Amount</th>
+                  <th className="pb-3 font-normal">Reference</th>
                   <th className="pb-3 font-normal">Status</th>
                   <th className="pb-3 font-normal">Date</th>
                 </tr>
               </thead>
               <tbody>
                 {transactions.map((t) => (
-                  <tr key={t.id} className="border-b border-line/60 last:border-0">
+                  <tr key={t.id} className="border-b border-zinc-800/40 last:border-0">
                     <td className="py-3">
                       <span className="flex items-center gap-2">
                         {t.type === "DEPOSIT" || t.type === "MANUAL_CREDIT" ? (
@@ -132,20 +181,22 @@ export default async function DashboardPage() {
                       </span>
                     </td>
                     <td className="py-3 text-zinc-400">{t.asset.symbol}</td>
-                    <td className="py-3 text-zinc-100">
+                    <td className="py-3 text-zinc-100 font-mono">
                       {Number(t.amount).toLocaleString(undefined, { maximumFractionDigits: 8 })}
                     </td>
                     <td className="py-3">
-                      <span
-                        className={cn(
-                          "text-xs px-2 py-1 rounded-full border",
-                          t.status === "APPROVED" && "text-emerald border-emerald/30 bg-emerald/10",
-                          t.status === "REJECTED" && "text-red-400 border-red-500/30 bg-red-500/10",
-                          t.status === "PENDING" && "text-gold border-gold/30 bg-gold/10"
-                        )}
-                      >
-                        {t.status}
-                      </span>
+                      {t.txHash ? (
+                        <CopyTag value={t.txHash} label={`${t.txHash.slice(0, 6)}…${t.txHash.slice(-4)}`} />
+                      ) : t.referenceNote ? (
+                        <span className="text-xs text-zinc-500 italic truncate max-w-[12rem] inline-block align-middle">
+                          {t.referenceNote}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-zinc-700">—</span>
+                      )}
+                    </td>
+                    <td className="py-3">
+                      <StatusBadge status={t.status} />
                     </td>
                     <td className="py-3 text-zinc-500">{t.createdAt.toLocaleDateString()}</td>
                   </tr>

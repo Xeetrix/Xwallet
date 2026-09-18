@@ -5,6 +5,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { Copy, Check, X, Plus } from "lucide-react";
 import type { Asset, NetworkAddress } from "@prisma/client";
 import { submitDeposit, type DepositActionState } from "@/actions/client-actions";
+import CryptoIcon from "@/components/CryptoIcon";
 
 type AssetWithAddresses = Asset & { networkAddresses: NetworkAddress[] };
 
@@ -58,7 +59,7 @@ export default function DepositModal({ assets }: { assets: AssetWithAddresses[] 
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-black/70 backdrop-blur-sm">
-      <div className="w-full max-w-md luxury-card p-6 relative shadow-2xl shadow-black/50 max-h-[90vh] overflow-y-auto">
+      <div className="w-full max-w-md luxury-card p-6 relative max-h-[90vh] overflow-y-auto">
         <button
           onClick={() => setOpen(false)}
           className="absolute top-4 right-4 text-zinc-500 hover:text-zinc-200 transition"
@@ -83,18 +84,21 @@ export default function DepositModal({ assets }: { assets: AssetWithAddresses[] 
                 <label className="block text-xs uppercase tracking-wider text-zinc-500 mb-1.5">
                   Asset
                 </label>
-                <select
-                  name="assetId"
-                  value={assetId}
-                  onChange={(e) => setAssetId(e.target.value)}
-                  className="w-full rounded-lg bg-obsidian border border-line px-3 py-2.5 text-sm text-zinc-100 outline-none focus:border-gold/60"
-                >
-                  {assets.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.symbol}
-                    </option>
-                  ))}
-                </select>
+                <div className="flex items-center gap-2">
+                  <CryptoIcon symbol={selectedAsset?.symbol ?? "?"} size={32} />
+                  <select
+                    name="assetId"
+                    value={assetId}
+                    onChange={(e) => setAssetId(e.target.value)}
+                    className="luxury-input"
+                  >
+                    {assets.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.symbol}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
               <div>
                 <label className="block text-xs uppercase tracking-wider text-zinc-500 mb-1.5">
@@ -104,7 +108,7 @@ export default function DepositModal({ assets }: { assets: AssetWithAddresses[] 
                   name="networkName"
                   value={networkName}
                   onChange={(e) => setNetworkName(e.target.value)}
-                  className="w-full rounded-lg bg-obsidian border border-line px-3 py-2.5 text-sm text-zinc-100 outline-none focus:border-gold/60"
+                  className="luxury-input"
                 >
                   {availableNetworks.map((n) => (
                     <option key={n.id} value={n.networkName}>
@@ -116,7 +120,7 @@ export default function DepositModal({ assets }: { assets: AssetWithAddresses[] 
             </div>
 
             {selectedNetwork ? (
-              <div className="rounded-xl border border-line p-4 flex flex-col items-center text-center bg-obsidian/60">
+              <div className="rounded-xl border border-zinc-800/60 p-4 flex flex-col items-center text-center bg-black/30">
                 <div className="bg-white p-2.5 rounded-lg mb-3">
                   <QRCodeSVG value={selectedNetwork.walletAddress} size={140} />
                 </div>
@@ -126,7 +130,7 @@ export default function DepositModal({ assets }: { assets: AssetWithAddresses[] 
                 <button
                   type="button"
                   onClick={handleCopy}
-                  className="flex items-center gap-1.5 text-xs text-gold hover:text-gold-light font-mono break-all px-2"
+                  className="flex items-center gap-1.5 text-xs text-gold hover:text-gold-light font-mono break-all px-2 transition"
                 >
                   {selectedNetwork.walletAddress}
                   {copied ? (
@@ -144,15 +148,20 @@ export default function DepositModal({ assets }: { assets: AssetWithAddresses[] 
               <label className="block text-xs uppercase tracking-wider text-zinc-500 mb-1.5">
                 Amount Sent
               </label>
-              <input
-                name="amount"
-                type="number"
-                step="any"
-                min="0"
-                required
-                className="w-full rounded-lg bg-obsidian border border-line px-3.5 py-2.5 text-sm text-zinc-100 outline-none focus:border-gold/60"
-                placeholder="0.00"
-              />
+              <div className="relative">
+                <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-mono text-zinc-500">
+                  {selectedAsset?.symbol ?? ""}
+                </span>
+                <input
+                  name="amount"
+                  type="number"
+                  step="any"
+                  min="0"
+                  required
+                  className="luxury-input !pl-14 font-mono tabular-nums"
+                  placeholder="0.00"
+                />
+              </div>
             </div>
 
             <div>
@@ -163,7 +172,7 @@ export default function DepositModal({ assets }: { assets: AssetWithAddresses[] 
                 name="txHash"
                 type="text"
                 required
-                className="w-full rounded-lg bg-obsidian border border-line px-3.5 py-2.5 text-sm text-zinc-100 outline-none focus:border-gold/60 font-mono"
+                className="luxury-input font-mono"
                 placeholder="0x..."
               />
             </div>

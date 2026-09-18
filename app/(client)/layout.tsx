@@ -11,7 +11,7 @@ export default async function ClientLayout({ children }: { children: React.React
 
   return (
     <div className="min-h-screen flex">
-      <aside className="hidden md:flex w-64 flex-col border-r border-line bg-panel/60 px-5 py-6">
+      <aside className="hidden md:flex w-64 flex-col border-r border-zinc-800/60 bg-zinc-950/40 backdrop-blur-xl px-5 py-6">
         <div className="mb-10">
           <span className="text-gold text-[10px] tracking-[0.35em] uppercase">Private Wealth</span>
           <h1 className="font-serif text-lg text-zinc-50">XWallet Asia</h1>
@@ -22,7 +22,7 @@ export default async function ClientLayout({ children }: { children: React.React
             Portfolio
           </div>
         </nav>
-        <div className="border-t border-line pt-4 mt-4">
+        <div className="border-t border-zinc-800/60 pt-4 mt-4">
           <div className="flex items-center gap-2 text-xs text-zinc-500 mb-3">
             <ShieldCheck className="w-3.5 h-3.5 text-emerald" />
             {session.fullName}

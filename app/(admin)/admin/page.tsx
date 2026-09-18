@@ -1,11 +1,16 @@
-import { Clock, Coins, Users } from "lucide-react";
+import { Clock, Coins, ShieldCheck, Users, Vault } from "lucide-react";
 import { prisma } from "@/lib/prisma";
+import { fetchUsdPrices } from "@/lib/pricing";
 import UserStatusActions from "@/components/UserStatusActions";
 import DepositReviewActions from "@/components/DepositReviewActions";
 import ManualAdjustModal from "@/components/ManualAdjustModal";
+import StatCard from "@/components/StatCard";
+import StatusBadge from "@/components/StatusBadge";
+import CopyTag from "@/components/CopyTag";
+import CryptoIcon from "@/components/CryptoIcon";
 
 export default async function AdminConsolePage() {
-  const [pendingUsers, otherUsers, pendingDeposits, assets] = await Promise.all([
+  const [pendingUsers, otherUsers, pendingDeposits, assets, allBalances] = await Promise.all([
     prisma.user.findMany({ where: { status: "PENDING_APPROVAL" }, orderBy: { createdAt: "asc" } }),
     prisma.user.findMany({
       where: { role: "CLIENT", status: { not: "PENDING_APPROVAL" } },
@@ -17,9 +22,17 @@ export default async function AdminConsolePage() {
       orderBy: { createdAt: "asc" },
     }),
     prisma.asset.findMany({ where: { isActive: true }, orderBy: { symbol: "asc" } }),
+    prisma.userBalance.findMany({ include: { asset: true } }),
   ]);
 
   const activeClientCount = otherUsers.filter((u) => u.status === "ACTIVE").length;
+
+  const prices = await fetchUsdPrices(allBalances.map((b) => b.asset.symbol));
+  const totalCustodyValue = allBalances.reduce((sum, b) => {
+    const price = prices[b.asset.symbol.toUpperCase()];
+    return typeof price === "number" ? sum + Number(b.balance) * price : sum;
+  }, 0);
+  const custodyHasPricing = allBalances.some((b) => typeof prices[b.asset.symbol.toUpperCase()] === "number");
 
   return (
     <div className="p-6 md:p-10 max-w-6xl mx-auto">
@@ -31,25 +44,37 @@ export default async function AdminConsolePage() {
         <ManualAdjustModal clients={otherUsers} assets={assets} />
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-10">
-        <div className="luxury-card p-5">
-          <p className="text-xs text-zinc-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-            <Clock className="w-3.5 h-3.5" /> Pending Approvals
-          </p>
-          <p className="font-serif text-2xl text-gold">{pendingUsers.length}</p>
-        </div>
-        <div className="luxury-card p-5">
-          <p className="text-xs text-zinc-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-            <Coins className="w-3.5 h-3.5" /> Deposits Awaiting Review
-          </p>
-          <p className="font-serif text-2xl text-gold">{pendingDeposits.length}</p>
-        </div>
-        <div className="luxury-card p-5">
-          <p className="text-xs text-zinc-500 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-            <Users className="w-3.5 h-3.5" /> Active Clients
-          </p>
-          <p className="font-serif text-2xl text-zinc-50">{activeClientCount}</p>
-        </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-10">
+        <StatCard
+          label="Total Custody Value"
+          icon={Vault}
+          tone="gold"
+          valueTone="gold"
+          value={
+            custodyHasPricing
+              ? totalCustodyValue.toLocaleString(undefined, {
+                  style: "currency",
+                  currency: "USD",
+                  maximumFractionDigits: 0,
+                })
+              : "—"
+          }
+        />
+        <StatCard
+          label="Pending Approvals"
+          icon={Clock}
+          tone={pendingUsers.length > 0 ? "gold" : "zinc"}
+          valueTone={pendingUsers.length > 0 ? "gold" : "zinc"}
+          value={pendingUsers.length}
+        />
+        <StatCard
+          label="Pending Deposits"
+          icon={Coins}
+          tone={pendingDeposits.length > 0 ? "gold" : "zinc"}
+          valueTone={pendingDeposits.length > 0 ? "gold" : "zinc"}
+          value={pendingDeposits.length}
+        />
+        <StatCard label="Active Clients" icon={Users} tone="emerald" valueTone="emerald" value={activeClientCount} />
       </div>
 
       <div className="luxury-card p-6 mb-8">
@@ -61,7 +86,7 @@ export default async function AdminConsolePage() {
             {pendingUsers.map((u) => (
               <div
                 key={u.id}
-                className="flex items-center justify-between rounded-xl border border-line px-4 py-3.5"
+                className="flex items-center justify-between rounded-xl border border-zinc-800/60 px-4 py-3.5"
               >
                 <div>
                   <p className="text-sm text-zinc-100">{u.fullName}</p>
@@ -83,18 +108,29 @@ export default async function AdminConsolePage() {
             {pendingDeposits.map((t) => (
               <div
                 key={t.id}
-                className="flex items-center justify-between rounded-xl border border-line px-4 py-3.5 gap-4"
+                className="flex items-center justify-between rounded-xl border border-zinc-800/60 px-4 py-3.5 gap-4"
               >
-                <div className="min-w-0">
-                  <p className="text-sm text-zinc-100">
-                    {t.user.fullName}{" "}
-                    <span className="text-zinc-500">
-                      — {Number(t.amount).toLocaleString()} {t.asset.symbol}
-                    </span>
-                  </p>
-                  <p className="text-xs text-zinc-500 truncate max-w-md font-mono">
-                    {t.networkName} · {t.txHash}
-                  </p>
+                <div className="flex items-center gap-3 min-w-0">
+                  <CryptoIcon symbol={t.asset.symbol} size={32} />
+                  <div className="min-w-0">
+                    <p className="text-sm text-zinc-100 truncate">
+                      {t.user.fullName}{" "}
+                      <span className="text-zinc-500 font-mono">
+                        · {Number(t.amount).toLocaleString()} {t.asset.symbol}
+                      </span>
+                    </p>
+                    <div className="mt-1 flex items-center gap-2">
+                      <span className="text-[11px] text-zinc-600 uppercase tracking-wide">
+                        {t.networkName}
+                      </span>
+                      {t.txHash && (
+                        <CopyTag
+                          value={t.txHash}
+                          label={`${t.txHash.slice(0, 8)}…${t.txHash.slice(-6)}`}
+                        />
+                      )}
+                    </div>
+                  </div>
                 </div>
                 <DepositReviewActions transactionId={t.id} />
               </div>
@@ -104,7 +140,10 @@ export default async function AdminConsolePage() {
       </div>
 
       <div className="luxury-card p-6">
-        <h2 className="font-serif text-lg text-zinc-100 mb-5">Client Directory</h2>
+        <h2 className="font-serif text-lg text-zinc-100 mb-5 flex items-center gap-2">
+          <ShieldCheck className="w-4 h-4 text-gold" />
+          Client Directory
+        </h2>
         {otherUsers.length === 0 ? (
           <p className="text-sm text-zinc-500">No clients yet.</p>
         ) : (
@@ -112,11 +151,14 @@ export default async function AdminConsolePage() {
             {otherUsers.map((u) => (
               <div
                 key={u.id}
-                className="flex items-center justify-between rounded-xl border border-line px-4 py-3.5"
+                className="flex items-center justify-between rounded-xl border border-zinc-800/60 px-4 py-3.5"
               >
-                <div>
-                  <p className="text-sm text-zinc-100">{u.fullName}</p>
-                  <p className="text-xs text-zinc-500">{u.email}</p>
+                <div className="flex items-center gap-3">
+                  <div>
+                    <p className="text-sm text-zinc-100">{u.fullName}</p>
+                    <p className="text-xs text-zinc-500">{u.email}</p>
+                  </div>
+                  <StatusBadge status={u.status} />
                 </div>
                 <UserStatusActions userId={u.id} status={u.status} />
               </div>

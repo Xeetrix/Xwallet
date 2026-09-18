@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect, useActionState } from "react";
+import { useState, useMemo, useEffect, useActionState } from "react";
 import { Wallet, X, Check } from "lucide-react";
 import type { User, Asset } from "@prisma/client";
 import { manualBalanceAdjustment, type ActionResult } from "@/actions/admin-actions";
+import CryptoIcon from "@/components/CryptoIcon";
 
 const initialState: ActionResult = { error: null, success: false };
 
@@ -15,7 +16,11 @@ export default function ManualAdjustModal({
   assets: Asset[];
 }) {
   const [open, setOpen] = useState(false);
+  const [assetId, setAssetId] = useState(assets[0]?.id ?? "");
+  const [type, setType] = useState<"CREDIT" | "DEBIT">("CREDIT");
   const [state, formAction, pending] = useActionState(manualBalanceAdjustment, initialState);
+
+  const selectedAsset = useMemo(() => assets.find((a) => a.id === assetId), [assets, assetId]);
 
   useEffect(() => {
     if (state.success) {
@@ -38,7 +43,7 @@ export default function ManualAdjustModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-black/70 backdrop-blur-sm">
-      <div className="w-full max-w-md luxury-card p-6 relative shadow-2xl shadow-black/50 max-h-[90vh] overflow-y-auto">
+      <div className="w-full max-w-md luxury-card p-6 relative max-h-[90vh] overflow-y-auto">
         <button
           onClick={() => setOpen(false)}
           className="absolute top-4 right-4 text-zinc-500 hover:text-zinc-200 transition"
@@ -64,11 +69,7 @@ export default function ManualAdjustModal({
               <label className="block text-xs uppercase tracking-wider text-zinc-500 mb-1.5">
                 Client
               </label>
-              <select
-                name="userId"
-                required
-                className="w-full rounded-lg bg-obsidian border border-line px-3 py-2.5 text-sm text-zinc-100 outline-none focus:border-gold/60"
-              >
+              <select name="userId" required className="luxury-input">
                 {clients.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.fullName} ({c.email})
@@ -82,30 +83,48 @@ export default function ManualAdjustModal({
                 <label className="block text-xs uppercase tracking-wider text-zinc-500 mb-1.5">
                   Asset
                 </label>
-                <select
-                  name="assetId"
-                  required
-                  className="w-full rounded-lg bg-obsidian border border-line px-3 py-2.5 text-sm text-zinc-100 outline-none focus:border-gold/60"
-                >
-                  {assets.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.symbol}
-                    </option>
-                  ))}
-                </select>
+                <div className="flex items-center gap-2">
+                  <CryptoIcon symbol={selectedAsset?.symbol ?? "?"} size={32} />
+                  <select
+                    name="assetId"
+                    required
+                    value={assetId}
+                    onChange={(e) => setAssetId(e.target.value)}
+                    className="luxury-input"
+                  >
+                    {assets.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.symbol}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
               <div>
                 <label className="block text-xs uppercase tracking-wider text-zinc-500 mb-1.5">
                   Type
                 </label>
-                <select
-                  name="type"
-                  required
-                  className="w-full rounded-lg bg-obsidian border border-line px-3 py-2.5 text-sm text-zinc-100 outline-none focus:border-gold/60"
-                >
-                  <option value="CREDIT">Credit</option>
-                  <option value="DEBIT">Debit</option>
-                </select>
+                <div className="grid grid-cols-2 gap-1.5 rounded-lg border border-zinc-800/60 bg-black/30 p-1">
+                  <input type="hidden" name="type" value={type} />
+                  <button
+                    type="button"
+                    onClick={() => setType("CREDIT")}
+                    className={`rounded-md py-1.5 text-xs font-medium transition ${
+                      type === "CREDIT" ? "bg-emerald/15 text-emerald" : "text-zinc-500 hover:text-zinc-300"
+                    }`}
+                  >
+                    Credit
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setType("DEBIT")}
+                    className={`rounded-md py-1.5 text-xs font-medium transition ${
+                      type === "DEBIT" ? "bg-red-500/15 text-red-400" : "text-zinc-500 hover:text-zinc-300"
+                    }`}
+                  >
+                    Debit
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -113,15 +132,20 @@ export default function ManualAdjustModal({
               <label className="block text-xs uppercase tracking-wider text-zinc-500 mb-1.5">
                 Amount
               </label>
-              <input
-                name="amount"
-                type="number"
-                step="any"
-                min="0"
-                required
-                className="w-full rounded-lg bg-obsidian border border-line px-3.5 py-2.5 text-sm text-zinc-100 outline-none focus:border-gold/60"
-                placeholder="0.00"
-              />
+              <div className="relative">
+                <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-mono text-zinc-500">
+                  {selectedAsset?.symbol ?? ""}
+                </span>
+                <input
+                  name="amount"
+                  type="number"
+                  step="any"
+                  min="0"
+                  required
+                  className="luxury-input !pl-14 font-mono tabular-nums"
+                  placeholder="0.00"
+                />
+              </div>
             </div>
 
             <div>
@@ -132,7 +156,7 @@ export default function ManualAdjustModal({
                 name="note"
                 required
                 rows={2}
-                className="w-full rounded-lg bg-obsidian border border-line px-3.5 py-2.5 text-sm text-zinc-100 outline-none focus:border-gold/60 resize-none"
+                className="luxury-input resize-none"
                 placeholder="e.g. Bank wire received — credited 10,000 USDT"
               />
             </div>
