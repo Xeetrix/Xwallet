@@ -3,13 +3,21 @@ import { LogOut, ShieldCheck } from "lucide-react";
 import { getSession } from "@/lib/auth";
 import { logoutUser } from "@/actions/auth-actions";
 import AdminNav from "@/components/AdminNav";
+import MobileNav from "@/components/MobileNav";
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession();
   if (!session || session.role !== "ADMIN") redirect("/login");
 
   return (
-    <div className="min-h-screen flex">
+    <div className="min-h-screen flex flex-col md:flex-row">
+      <MobileNav
+        variant="admin"
+        eyebrow="Master Console"
+        userLabel={session.fullName}
+        logoutAction={logoutUser}
+      />
+
       <aside className="hidden md:flex w-64 flex-col border-r border-zinc-800/60 bg-zinc-950/40 backdrop-blur-xl px-5 py-6">
         <div className="mb-10">
           <span className="text-gold text-[10px] tracking-[0.35em] uppercase">Master Console</span>

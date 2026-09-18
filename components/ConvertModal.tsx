@@ -6,7 +6,9 @@ import type { Asset, UserBalance } from "@prisma/client";
 import { convertAsset, getSwapQuote, type SwapActionState, type SwapQuote } from "@/actions/client-actions";
 import CryptoIcon from "@/components/CryptoIcon";
 
-type BalanceWithAsset = UserBalance & { asset: Asset };
+// balance is a plain number here, not Prisma's Decimal — the server
+// component serializes it before passing this data down as a prop.
+type BalanceWithAsset = Omit<UserBalance, "balance"> & { balance: number; asset: Asset };
 
 const initialState: SwapActionState = { error: null, success: false };
 
@@ -96,8 +98,8 @@ export default function ConvertModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-black/70 backdrop-blur-sm">
-      <div className="w-full max-w-md luxury-card p-6 relative max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-black/70 backdrop-blur-sm animate-fade-in">
+      <div className="w-full max-w-md luxury-card p-6 relative max-h-[90vh] overflow-y-auto animate-scale-in">
         <button
           onClick={() => setOpen(false)}
           className="absolute top-4 right-4 text-zinc-500 hover:text-zinc-200 transition"

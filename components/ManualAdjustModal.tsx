@@ -42,8 +42,8 @@ export default function ManualAdjustModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-black/70 backdrop-blur-sm">
-      <div className="w-full max-w-md luxury-card p-6 relative max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-black/70 backdrop-blur-sm animate-fade-in">
+      <div className="w-full max-w-md luxury-card p-6 relative max-h-[90vh] overflow-y-auto animate-scale-in">
         <button
           onClick={() => setOpen(false)}
           className="absolute top-4 right-4 text-zinc-500 hover:text-zinc-200 transition"

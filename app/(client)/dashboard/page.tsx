@@ -54,6 +54,12 @@ export default async function DashboardPage() {
     (t) => t.type === "DEPOSIT" && t.status === "PENDING"
   ).length;
 
+  // Prisma's Decimal is a class instance and can't cross the server->client
+  // boundary as a prop (React Server Components only serialize plain data),
+  // so the modals below receive a plain-number version instead of the raw
+  // query result.
+  const serializedBalances = balances.map((b) => ({ ...b, balance: Number(b.balance) }));
+
   return (
     <div className="p-6 md:p-10 max-w-6xl mx-auto">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-8">
@@ -64,8 +70,8 @@ export default async function DashboardPage() {
           </h1>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <ConvertModal balances={balances} assets={assets} />
-          <TransferModal balances={balances} />
+          <ConvertModal balances={serializedBalances} assets={assets} />
+          <TransferModal balances={serializedBalances} />
           <DepositModal assets={assets} />
         </div>
       </div>

@@ -45,4 +45,60 @@ body {
   .luxury-input {
     @apply w-full rounded-lg bg-black/30 border border-zinc-800/60 px-3.5 py-2.5 text-sm text-zinc-100 outline-none transition focus:border-gold/60 focus:bg-black/50;
   }
+
+  .animate-fade-in {
+    animation: fade-in 0.15s ease-out;
+  }
+
+  .animate-scale-in {
+    animation: scale-in 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .animate-slide-in {
+    animation: slide-in 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .skeleton {
+    @apply animate-pulse rounded-md bg-zinc-800/60;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes slide-in {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+/* Consistent, on-brand keyboard focus ring across every interactive element */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid rgba(212, 175, 55, 0.6);
+  outline-offset: 2px;
 }
