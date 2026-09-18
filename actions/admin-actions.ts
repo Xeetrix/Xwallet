@@ -75,11 +75,20 @@ export async function configureAssetAddress(
     return { error: "All fields are required.", success: false };
   }
 
-  await prisma.networkAddress.upsert({
-    where: { assetId_networkName: { assetId, networkName } },
-    create: { assetId, networkName, walletAddress, isActive: true },
-    update: { walletAddress, isActive: true },
-  });
+  const asset = await prisma.asset.findUnique({ where: { id: assetId } });
+  if (!asset) {
+    return { error: "Asset not found.", success: false };
+  }
+
+  try {
+    await prisma.networkAddress.upsert({
+      where: { assetId_networkName: { assetId, networkName } },
+      create: { assetId, networkName, walletAddress, isActive: true },
+      update: { walletAddress, isActive: true },
+    });
+  } catch {
+    return { error: "Could not save the receiving address. Please try again.", success: false };
+  }
 
   revalidatePath("/admin/assets");
   return { error: null, success: true };

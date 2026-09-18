@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition, useActionState } from "react";
+import { useState, useTransition, useActionState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Check, X } from "lucide-react";
 import type { Asset, NetworkAddress } from "@prisma/client";
@@ -168,11 +168,31 @@ function AddressForm({ assetId }: { assetId: string }) {
   const [open, setOpen] = useState(false);
   const [state, formAction, pending] = useActionState(configureAssetAddress, initialState);
 
+  // Without this, a successful save gave zero visible feedback — the form
+  // just silently reset to empty fields, which reads identically to "it
+  // didn't work." Show a confirmation, then close, matching every other
+  // modal in the admin (ManualAdjustModal, DepositModal).
+  useEffect(() => {
+    if (state.success) {
+      const timeout = setTimeout(() => setOpen(false), 1500);
+      return () => clearTimeout(timeout);
+    }
+  }, [state.success]);
+
   if (!open) {
     return (
       <button onClick={() => setOpen(true)} className="text-xs text-gold hover:text-gold-light transition">
         + Add / update receiving address
       </button>
+    );
+  }
+
+  if (state.success) {
+    return (
+      <div className="flex items-center gap-2 text-sm text-emerald mt-2">
+        <Check className="w-4 h-4" />
+        Receiving address saved.
+      </div>
     );
   }
 
@@ -201,7 +221,7 @@ function AddressForm({ assetId }: { assetId: string }) {
           className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-lg bg-gold hover:bg-gold-light text-obsidian text-sm font-medium py-2 transition disabled:opacity-50"
         >
           <Check className="w-4 h-4" />
-          Save
+          {pending ? "Saving..." : "Save"}
         </button>
         <button
           type="button"
