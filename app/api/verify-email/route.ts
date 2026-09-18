@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { sendAccountActivatedEmail } from "@/lib/email";
 
 export async function GET(request: NextRequest) {
   const token = request.nextUrl.searchParams.get("token");
@@ -39,6 +40,8 @@ export async function GET(request: NextRequest) {
   if (updated.count === 0) {
     return NextResponse.redirect(new URL("/verify-email?status=already-active", origin));
   }
+
+  await sendAccountActivatedEmail({ to: user.email, fullName: user.fullName });
 
   return NextResponse.redirect(new URL("/verify-email?status=success", origin));
 }

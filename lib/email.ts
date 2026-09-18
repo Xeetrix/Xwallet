@@ -1,6 +1,10 @@
 import { Resend } from "resend";
 
 const FROM_ADDRESS = "XWallet Asia <support@xwallet.asia>";
+// Purely automated confirmations (account-activation notices) go out from
+// a noreply address instead — nothing to reply to, unlike deposit/withdrawal
+// notifications where a client might reasonably write back with a question.
+const NOREPLY_ADDRESS = "XWallet Asia <noreply@xwallet.asia>";
 
 let cachedClient: Resend | null = null;
 
@@ -31,14 +35,24 @@ export function getAppUrl(): string {
  * balance-changing action triggered it. Email is a notification, never a
  * precondition for a transaction to succeed.
  */
-async function sendEmail({ to, subject, html }: { to: string; subject: string; html: string }): Promise<void> {
+async function sendEmail({
+  to,
+  subject,
+  html,
+  from = FROM_ADDRESS,
+}: {
+  to: string;
+  subject: string;
+  html: string;
+  from?: string;
+}): Promise<void> {
   const client = getClient();
   if (!client) {
-    console.warn(`[email] RESEND_API_KEY not configured — skipping "${subject}" to ${to}`);
+    console.warn(`[email] RESEND_API_KEY not configured — skipping "${subject}" to ${to} (from ${from})`);
     return;
   }
   try {
-    const result = await client.emails.send({ from: FROM_ADDRESS, to, subject, html });
+    const result = await client.emails.send({ from, to, subject, html });
     if (result.error) {
       console.error(`[email] Resend rejected "${subject}" to ${to}:`, result.error);
     }
@@ -205,5 +219,10 @@ export async function sendAccountActivatedEmail(params: { to: string; fullName: 
       </tr>
     </table>
   `;
-  await sendEmail({ to: params.to, subject: "Your account is active — XWallet Asia", html: renderShell(body) });
+  await sendEmail({
+    to: params.to,
+    subject: "Your account is active — XWallet Asia",
+    html: renderShell(body),
+    from: NOREPLY_ADDRESS,
+  });
 }
