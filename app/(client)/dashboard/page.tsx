@@ -4,10 +4,14 @@ import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { fetchUsdPrices } from "@/lib/pricing";
 import DepositModal from "@/components/DepositModal";
+import TransferModal from "@/components/TransferModal";
+import ConvertModal from "@/components/ConvertModal";
 import CryptoIcon from "@/components/CryptoIcon";
 import CopyTag from "@/components/CopyTag";
 import StatusBadge from "@/components/StatusBadge";
 import StatCard from "@/components/StatCard";
+
+const INCOMING_TYPES = new Set(["DEPOSIT", "MANUAL_CREDIT", "TRANSFER_RECEIVED", "SWAP_CREDIT"]);
 
 export default async function DashboardPage() {
   const session = await getSession();
@@ -16,7 +20,7 @@ export default async function DashboardPage() {
   const [balances, assets, transactions] = await Promise.all([
     prisma.userBalance.findMany({
       where: { userId: session.sub },
-      include: { asset: true },
+      include: { asset: { include: { networkAddresses: { where: { isActive: true } } } } },
       orderBy: { balance: "desc" },
     }),
     prisma.asset.findMany({
@@ -59,7 +63,11 @@ export default async function DashboardPage() {
             Welcome back, {session.fullName.split(" ")[0]}
           </h1>
         </div>
-        <DepositModal assets={assets} />
+        <div className="flex flex-wrap items-center gap-3">
+          <ConvertModal balances={balances} assets={assets} />
+          <TransferModal balances={balances} />
+          <DepositModal assets={assets} />
+        </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-10">
@@ -121,7 +129,7 @@ export default async function DashboardPage() {
                       </div>
                     </div>
                     <div className="text-right shrink-0">
-                      <p className="font-serif text-zinc-50">
+                      <p className="font-mono tabular-nums text-zinc-50">
                         {amount.toLocaleString(undefined, { maximumFractionDigits: 8 })}
                       </p>
                       <p className="text-xs text-zinc-500">
@@ -172,16 +180,16 @@ export default async function DashboardPage() {
                   <tr key={t.id} className="border-b border-zinc-800/40 last:border-0">
                     <td className="py-3">
                       <span className="flex items-center gap-2">
-                        {t.type === "DEPOSIT" || t.type === "MANUAL_CREDIT" ? (
+                        {INCOMING_TYPES.has(t.type) ? (
                           <ArrowDownToLine className="w-3.5 h-3.5 text-emerald" />
                         ) : (
                           <ArrowUpRight className="w-3.5 h-3.5 text-red-400" />
                         )}
-                        {t.type.replace("_", " ")}
+                        {t.type.replace(/_/g, " ")}
                       </span>
                     </td>
                     <td className="py-3 text-zinc-400">{t.asset.symbol}</td>
-                    <td className="py-3 text-zinc-100 font-mono">
+                    <td className="py-3 text-zinc-100 font-mono tabular-nums">
                       {Number(t.amount).toLocaleString(undefined, { maximumFractionDigits: 8 })}
                     </td>
                     <td className="py-3">

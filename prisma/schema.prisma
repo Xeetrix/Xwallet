@@ -24,6 +24,10 @@ enum TransactionType {
   WITHDRAWAL
   MANUAL_CREDIT
   MANUAL_DEBIT
+  TRANSFER_SENT
+  TRANSFER_RECEIVED
+  SWAP_DEBIT
+  SWAP_CREDIT
 }
 
 enum TransactionStatus {
@@ -81,16 +85,18 @@ model UserBalance {
 }
 
 model Transaction {
-  id            String            @id @default(cuid())
-  userId        String
-  user          User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  assetId       String
-  asset         Asset             @relation(fields: [assetId], references: [id], onDelete: Cascade)
-  networkName   String?
-  type          TransactionType
-  amount        Decimal           @db.Decimal(24, 8)
-  txHash        String?
-  status        TransactionStatus @default(PENDING)
-  referenceNote String?
-  createdAt     DateTime          @default(now())
+  id                String            @id @default(cuid())
+  userId            String
+  user              User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  assetId           String
+  asset             Asset             @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  networkName       String?
+  type              TransactionType
+  amount            Decimal           @db.Decimal(24, 8)
+  feeAmount         Decimal?          @db.Decimal(24, 8)
+  counterpartyEmail String?
+  txHash            String?
+  status            TransactionStatus @default(PENDING)
+  referenceNote     String?
+  createdAt         DateTime          @default(now())
 }

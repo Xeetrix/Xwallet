@@ -21,8 +21,13 @@ const config: Config = {
         },
       },
       fontFamily: {
-        serif: ["var(--font-display)", "serif"],
+        // "font-serif" is kept as the heading utility name used throughout
+        // the app, but now resolves to the same institutional sans as body
+        // text — an elite geometric type system (Inter), not an editorial
+        // serif. Only the weight/size differs between headings and body.
+        serif: ["var(--font-body)", "sans-serif"],
         sans: ["var(--font-body)", "sans-serif"],
+        mono: ["var(--font-mono)", "ui-monospace", "monospace"],
       },
     },
   },
