@@ -8,11 +8,17 @@ import CryptoIcon from "@/components/CryptoIcon";
 
 const initialState: ActionResult = { error: null, success: false };
 
+// Deliberately narrower than the full Prisma User — this is a "use client"
+// component, so whatever shape `clients` has gets serialized into the page
+// source verbatim. Never widen this to the full User type (it carries
+// passwordHash); callers must select/strip down to just these fields.
+type AdjustableClient = Pick<User, "id" | "fullName" | "email">;
+
 export default function ManualAdjustModal({
   clients,
   assets,
 }: {
-  clients: User[];
+  clients: AdjustableClient[];
   assets: Asset[];
 }) {
   const [open, setOpen] = useState(false);

@@ -1,4 +1,6 @@
-import { Clock, Coins, ShieldCheck, Users, Vault } from "lucide-react";
+import Link from "next/link";
+import { Clock, Coins, ScrollText, ShieldCheck, Users, Vault } from "lucide-react";
+import type { Prisma, UserStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { fetchUsdPrices } from "@/lib/pricing";
 import UserStatusActions from "@/components/UserStatusActions";
@@ -9,23 +11,65 @@ import StatusBadge from "@/components/StatusBadge";
 import CopyTag from "@/components/CopyTag";
 import CryptoIcon from "@/components/CryptoIcon";
 
-export default async function AdminConsolePage() {
-  const [pendingUsers, otherUsers, pendingDeposits, assets, allBalances] = await Promise.all([
-    prisma.user.findMany({ where: { status: "PENDING_APPROVAL" }, orderBy: { createdAt: "asc" } }),
-    prisma.user.findMany({
-      where: { role: "CLIENT", status: { not: "PENDING_APPROVAL" } },
-      orderBy: { fullName: "asc" },
-    }),
-    prisma.transaction.findMany({
-      where: { type: "DEPOSIT", status: "PENDING" },
-      include: { user: true, asset: true },
-      orderBy: { createdAt: "asc" },
-    }),
-    prisma.asset.findMany({ where: { isActive: true }, orderBy: { symbol: "asc" } }),
-    prisma.userBalance.findMany({ include: { asset: true } }),
-  ]);
+const DIRECTORY_STATUSES: UserStatus[] = ["ACTIVE", "SUSPENDED"];
 
-  const activeClientCount = otherUsers.filter((u) => u.status === "ACTIVE").length;
+export default async function AdminConsolePage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const rawParams = await searchParams;
+  const getParam = (key: string) => {
+    const v = rawParams[key];
+    return (Array.isArray(v) ? v[0] : v)?.trim() ?? "";
+  };
+  const clientQuery = getParam("q");
+  const clientStatusFilter = getParam("status").toUpperCase();
+  const activeStatusFilter = (DIRECTORY_STATUSES as string[]).includes(clientStatusFilter)
+    ? (clientStatusFilter as UserStatus)
+    : null;
+
+  const directoryWhere: Prisma.UserWhereInput = {
+    role: "CLIENT",
+    status: activeStatusFilter ? activeStatusFilter : { in: DIRECTORY_STATUSES },
+    ...(clientQuery
+      ? {
+          OR: [
+            { fullName: { contains: clientQuery, mode: "insensitive" } },
+            { email: { contains: clientQuery, mode: "insensitive" } },
+          ],
+        }
+      : {}),
+  };
+
+  const [pendingUsers, otherUsers, allClientsForAdjustment, pendingDeposits, assets, allBalances] =
+    await Promise.all([
+      prisma.user.findMany({ where: { status: "PENDING_APPROVAL" }, orderBy: { createdAt: "asc" } }),
+      prisma.user.findMany({
+        where: directoryWhere,
+        orderBy: { fullName: "asc" },
+      }),
+      // Unfiltered client list for the manual-adjustment picker, so a
+      // directory search/status filter above doesn't also narrow who can
+      // be selected for a balance adjustment. Selected down to just the
+      // fields the (client-rendered) modal needs — never pass a full User
+      // row to a "use client" component, since it would serialize
+      // passwordHash straight into the page source.
+      prisma.user.findMany({
+        where: { role: "CLIENT", status: { in: DIRECTORY_STATUSES } },
+        select: { id: true, fullName: true, email: true },
+        orderBy: { fullName: "asc" },
+      }),
+      prisma.transaction.findMany({
+        where: { type: "DEPOSIT", status: "PENDING" },
+        include: { user: true, asset: true },
+        orderBy: { createdAt: "asc" },
+      }),
+      prisma.asset.findMany({ where: { isActive: true }, orderBy: { symbol: "asc" } }),
+      prisma.userBalance.findMany({ include: { asset: true } }),
+    ]);
+
+  const activeClientCount = await prisma.user.count({ where: { role: "CLIENT", status: "ACTIVE" } });
 
   const prices = await fetchUsdPrices(allBalances.map((b) => b.asset.symbol));
   const totalCustodyValue = allBalances.reduce((sum, b) => {
@@ -41,7 +85,16 @@ export default async function AdminConsolePage() {
           <p className="text-gold text-[10px] tracking-[0.35em] uppercase mb-1">Master Console</p>
           <h1 className="font-serif text-2xl text-zinc-50">Custody Operations</h1>
         </div>
-        <ManualAdjustModal clients={otherUsers} assets={assets} />
+        <div className="flex flex-wrap items-center gap-3">
+          <Link
+            href="/admin/transactions"
+            className="inline-flex items-center gap-2 rounded-lg border border-zinc-800/60 hover:border-gold/30 text-zinc-300 hover:text-gold text-sm font-medium px-4 py-2.5 transition"
+          >
+            <ScrollText className="w-4 h-4" />
+            Transaction Ledger
+          </Link>
+          <ManualAdjustModal clients={allClientsForAdjustment} assets={assets} />
+        </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-10">
@@ -114,7 +167,9 @@ export default async function AdminConsolePage() {
                   <CryptoIcon symbol={t.asset.symbol} size={32} />
                   <div className="min-w-0">
                     <p className="text-sm text-zinc-100 truncate">
-                      {t.user.fullName}{" "}
+                      <Link href={`/admin/clients/${t.userId}`} className="hover:text-gold transition">
+                        {t.user.fullName}
+                      </Link>{" "}
                       <span className="text-zinc-500 font-mono">
                         · {Number(t.amount).toLocaleString()} {t.asset.symbol}
                       </span>
@@ -140,12 +195,55 @@ export default async function AdminConsolePage() {
       </div>
 
       <div className="luxury-card p-6">
-        <h2 className="font-serif text-lg text-zinc-100 mb-5 flex items-center gap-2">
-          <ShieldCheck className="w-4 h-4 text-gold" />
-          Client Directory
-        </h2>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-5">
+          <h2 className="font-serif text-lg text-zinc-100 flex items-center gap-2">
+            <ShieldCheck className="w-4 h-4 text-gold" />
+            Client Directory
+          </h2>
+          <div className="flex items-center gap-1.5 rounded-lg border border-zinc-800/60 bg-black/30 p-1 text-xs">
+            {(
+              [
+                { label: "All", value: "" },
+                { label: "Active", value: "ACTIVE" },
+                { label: "Suspended", value: "SUSPENDED" },
+              ] as const
+            ).map((opt) => (
+              <Link
+                key={opt.label}
+                href={`/admin${
+                  opt.value || clientQuery
+                    ? `?${new URLSearchParams({
+                        ...(clientQuery ? { q: clientQuery } : {}),
+                        ...(opt.value ? { status: opt.value } : {}),
+                      }).toString()}`
+                    : ""
+                }`}
+                className={`rounded-md px-2.5 py-1.5 font-medium transition ${
+                  (opt.value || "") === (activeStatusFilter ?? "")
+                    ? "bg-gold/15 text-gold"
+                    : "text-zinc-500 hover:text-zinc-300"
+                }`}
+              >
+                {opt.label}
+              </Link>
+            ))}
+          </div>
+        </div>
+
+        <form className="mb-5">
+          {clientStatusFilter && <input type="hidden" name="status" value={clientStatusFilter} />}
+          <input
+            name="q"
+            defaultValue={clientQuery}
+            placeholder="Search by name or email…"
+            className="luxury-input"
+          />
+        </form>
+
         {otherUsers.length === 0 ? (
-          <p className="text-sm text-zinc-500">No clients yet.</p>
+          <p className="text-sm text-zinc-500">
+            {clientQuery || activeStatusFilter ? "No clients match these filters." : "No clients yet."}
+          </p>
         ) : (
           <div className="space-y-3">
             {otherUsers.map((u) => (
@@ -153,10 +251,15 @@ export default async function AdminConsolePage() {
                 key={u.id}
                 className="flex items-center justify-between rounded-xl border border-zinc-800/60 px-4 py-3.5"
               >
-                <div className="flex items-center gap-3">
-                  <div>
-                    <p className="text-sm text-zinc-100">{u.fullName}</p>
-                    <p className="text-xs text-zinc-500">{u.email}</p>
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="min-w-0">
+                    <Link
+                      href={`/admin/clients/${u.id}`}
+                      className="text-sm text-zinc-100 hover:text-gold transition truncate block"
+                    >
+                      {u.fullName}
+                    </Link>
+                    <p className="text-xs text-zinc-500 truncate">{u.email}</p>
                   </div>
                   <StatusBadge status={u.status} />
                 </div>
