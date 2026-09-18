@@ -75,9 +75,15 @@ function renderShell(bodyHtml: string): string {
             </tr>
             <tr>
               <td style="padding:20px 32px 28px 32px;border-top:1px solid rgba(255,255,255,0.06);">
-                <p style="margin:0;font-size:12px;color:#71717A;">
-                  This is an automated message from XWallet Asia. If you didn't expect this email, contact us at
-                  <a href="mailto:support@xwallet.asia" style="color:#D4AF37;">support@xwallet.asia</a>.
+                <p style="margin:0 0 10px 0;font-size:12px;color:#71717A;">
+                  If you didn't request this action or notice suspicious activity, contact our support team
+                  immediately at <a href="mailto:support@xwallet.asia" style="color:#D4AF37;">support@xwallet.asia</a>.
+                </p>
+                <p style="margin:0 0 4px 0;font-size:11px;color:#52525B;">
+                  This is an automated transactional email. Please do not reply to this message.
+                </p>
+                <p style="margin:0;font-size:11px;color:#3F3F46;">
+                  XWallet Asia HQ &nbsp;·&nbsp; support@xwallet.asia &nbsp;·&nbsp; © ${new Date().getFullYear()} XWallet Asia. All rights reserved.
                 </p>
               </td>
             </tr>
@@ -139,13 +145,24 @@ export async function sendVerificationEmail(params: {
 }): Promise<void> {
   const confirmUrl = `${getAppUrl()}/api/verify-email?token=${params.token}`;
   const body = `
-    <p style="margin:0 0 4px 0;color:#A1A1AA;">Hello ${params.fullName.split(" ")[0]},</p>
-    <p style="margin:0 0 4px 0;font-size:16px;font-weight:600;color:#F5F5F5;">Confirm your email to activate your account</p>
-    <p style="margin:12px 0 20px 0;color:#A1A1AA;">
-      Thank you for applying for XWallet Asia membership. Click below to confirm your email address — once
-      confirmed, you can sign in right away without waiting on manual review. This link expires in 48 hours.
+    <p style="margin:0 0 2px 0;font-size:10px;letter-spacing:2px;text-transform:uppercase;color:#52525B;">Secure Custody Starts Here</p>
+    <p style="margin:0 0 16px 0;font-size:18px;font-weight:600;color:#F5F5F5;">Account Created Successfully</p>
+    <p style="margin:0 0 4px 0;color:#A1A1AA;">Dear ${params.fullName},</p>
+    <p style="margin:12px 0 0 0;color:#A1A1AA;">
+      Welcome to XWallet Asia! Thank you for creating your account with us. We're excited to help you manage
+      your digital assets securely and efficiently.
     </p>
-    <table role="presentation" cellpadding="0" cellspacing="0">
+    ${renderDetailsTable([
+      { label: "Full Name", value: params.fullName },
+      { label: "Email", value: params.to },
+    ])}
+    <p style="margin:22px 0 8px 0;font-size:13px;font-weight:600;color:#E4E4E7;">Next Steps</p>
+    <ol style="margin:0;padding-left:18px;color:#A1A1AA;font-size:13px;line-height:1.9;">
+      <li>Confirm your email address using the button below</li>
+      <li>Log in with your email and password</li>
+      <li>Explore your portfolio and submit your first deposit</li>
+    </ol>
+    <table role="presentation" cellpadding="0" cellspacing="0" style="margin-top:20px;">
       <tr>
         <td style="border-radius:8px;background-color:#D4AF37;">
           <a href="${confirmUrl}" style="display:inline-block;padding:12px 24px;font-size:14px;font-weight:600;color:#090A10;text-decoration:none;">
@@ -154,14 +171,19 @@ export async function sendVerificationEmail(params: {
         </td>
       </tr>
     </table>
-    <p style="margin:20px 0 0 0;font-size:12px;color:#52525B;">
+    <p style="margin:16px 0 0 0;font-size:12px;color:#52525B;">
       Or paste this link into your browser: <br />
       <a href="${confirmUrl}" style="color:#D4AF37;word-break:break-all;">${confirmUrl}</a>
+    </p>
+    <p style="margin:20px 0 0 0;color:#A1A1AA;font-size:13px;">
+      This link expires in 48 hours. Once confirmed, you can sign in right away without waiting on manual
+      review. Need assistance? Our support team is available 24/7 at
+      <a href="mailto:support@xwallet.asia" style="color:#D4AF37;">support@xwallet.asia</a>.
     </p>
   `;
   await sendEmail({
     to: params.to,
-    subject: "Confirm your email — XWallet Asia",
+    subject: "Account Created Successfully — XWallet Asia",
     html: renderShell(body),
   });
 }
