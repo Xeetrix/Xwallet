@@ -45,6 +45,12 @@ model User {
   status       UserStatus @default(PENDING_APPROVAL)
   createdAt    DateTime   @default(now())
 
+  // Self-service email confirmation: set on registration, cleared once the
+  // client clicks their confirmation link (or once an admin approves them
+  // manually — either path is valid, and whichever happens first wins).
+  emailVerificationToken   String?   @unique
+  emailVerificationExpires DateTime?
+
   balances     UserBalance[]
   transactions Transaction[]
 }

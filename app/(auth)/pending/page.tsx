@@ -12,10 +12,11 @@ export default async function PendingPage() {
       <div className="mx-auto w-14 h-14 rounded-full bg-gold/10 border border-gold/30 flex items-center justify-center mb-5">
         <Clock className="w-6 h-6 text-gold" />
       </div>
-      <h2 className="font-serif text-xl text-zinc-100 mb-2">Application Under Review</h2>
+      <h2 className="font-serif text-xl text-zinc-100 mb-2">Confirm Your Email</h2>
       <p className="text-sm text-zinc-500 leading-relaxed mb-6">
-        Thank you, {session.fullName.split(" ")[0]}. Your membership request is being reviewed by our
-        private wealth desk. You will be notified once your account is activated.
+        Thank you, {session.fullName.split(" ")[0]}. We&apos;ve sent a confirmation link to your email
+        address — click it to activate your account immediately. If it doesn&apos;t arrive, our private
+        wealth desk will review your application manually.
       </p>
       <form action={logoutUser}>
         <button

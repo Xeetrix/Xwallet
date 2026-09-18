@@ -1,8 +1,12 @@
 "use server";
 
+import { randomBytes } from "crypto";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { createSessionCookie, destroySessionCookie, hashPassword, verifyPassword } from "@/lib/auth";
+import { sendVerificationEmail } from "@/lib/email";
+
+const VERIFICATION_TOKEN_TTL_MS = 48 * 60 * 60 * 1000; // 48 hours
 
 export interface AuthActionState {
   error: string | null;
@@ -41,6 +45,13 @@ export async function registerUser(
   const userCount = bootstrapConfigured ? 1 : await prisma.user.count();
   const isFirstUser = !bootstrapConfigured && userCount === 0;
 
+  // Self-service email confirmation lets a client activate their own
+  // account without waiting on admin review — the admin "Approve" button
+  // stays available too, as a fallback for anyone who can't confirm by
+  // email. The first/bootstrap admin skips this entirely (already ACTIVE).
+  const verificationToken = isFirstUser ? null : randomBytes(32).toString("hex");
+  const verificationExpires = isFirstUser ? null : new Date(Date.now() + VERIFICATION_TOKEN_TTL_MS);
+
   const passwordHash = await hashPassword(password);
   const user = await prisma.user.create({
     data: {
@@ -49,8 +60,14 @@ export async function registerUser(
       passwordHash,
       role: isFirstUser ? "ADMIN" : "CLIENT",
       status: isFirstUser ? "ACTIVE" : "PENDING_APPROVAL",
+      emailVerificationToken: verificationToken,
+      emailVerificationExpires: verificationExpires,
     },
   });
+
+  if (verificationToken) {
+    await sendVerificationEmail({ to: user.email, fullName: user.fullName, token: verificationToken });
+  }
 
   await createSessionCookie({
     sub: user.id,

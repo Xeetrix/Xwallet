@@ -5,6 +5,9 @@ import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth";
 import { computeNetworkFee, TRANSFER_FEE_RATE, WITHDRAWAL_FEE_RATE, CONVERT_FEE_RATE } from "@/lib/fees";
 import { fetchUsdPrices } from "@/lib/pricing";
+import { sendTransactionEmail } from "@/lib/email";
+
+const fmt = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 8 });
 
 export interface DepositActionState {
   error: string | null;
@@ -84,6 +87,22 @@ export async function submitDeposit(
       txHash,
       status: "PENDING",
     },
+  });
+
+  await sendTransactionEmail({
+    to: session.email,
+    fullName: session.fullName,
+    subject: "Deposit received — pending review",
+    headline: "Deposit submitted",
+    intro: "We've received your deposit and it's now pending review by our custody desk.",
+    accent: "gold",
+    rows: [
+      { label: "Asset", value: asset.symbol },
+      { label: "Network", value: networkName },
+      { label: "Amount", value: `${fmt(amount)} ${asset.symbol}` },
+      { label: "Transaction Hash", value: txHash },
+      { label: "Status", value: "Pending" },
+    ],
   });
 
   revalidatePath("/dashboard");
@@ -226,6 +245,36 @@ export async function transferAsset(
     throw error;
   }
 
+  await Promise.all([
+    sendTransactionEmail({
+      to: session.email,
+      fullName: session.fullName,
+      subject: `You sent ${fmt(amount)} ${asset.symbol}`,
+      headline: "Transfer sent",
+      intro: `Your transfer to ${recipient.email} is complete.`,
+      accent: "red",
+      rows: [
+        { label: "Recipient", value: recipient.email },
+        { label: "Amount", value: `${fmt(amount)} ${asset.symbol}` },
+        { label: "Network", value: networkName },
+        { label: "Network fee", value: `${fmt(feeInGasAsset)} ${gasAssetSymbol}` },
+      ],
+    }),
+    sendTransactionEmail({
+      to: recipient.email,
+      fullName: recipient.fullName,
+      subject: `You received ${fmt(amount)} ${asset.symbol}`,
+      headline: "Transfer received",
+      intro: `${session.fullName} sent you funds.`,
+      accent: "emerald",
+      rows: [
+        { label: "From", value: session.email },
+        { label: "Amount", value: `${fmt(amount)} ${asset.symbol}` },
+        { label: "Network", value: networkName },
+      ],
+    }),
+  ]);
+
   revalidatePath("/dashboard");
   return { error: null, success: true };
 }
@@ -328,6 +377,23 @@ export async function requestWithdrawal(
     throw error;
   }
 
+  await sendTransactionEmail({
+    to: session.email,
+    fullName: session.fullName,
+    subject: `Withdrawal request received — ${fmt(amount)} ${asset.symbol}`,
+    headline: "Withdrawal requested",
+    intro: "Your withdrawal request is pending review by our custody desk.",
+    accent: "gold",
+    rows: [
+      { label: "Asset", value: asset.symbol },
+      { label: "Amount", value: `${fmt(amount)} ${asset.symbol}` },
+      { label: "Network", value: networkName },
+      { label: "Destination", value: destinationAddress },
+      { label: "Network fee", value: `${fmt(feeInGasAsset)} ${gasAssetSymbol}` },
+      { label: "Status", value: "Pending" },
+    ],
+  });
+
   revalidatePath("/dashboard");
   return { error: null, success: true };
 }
@@ -428,6 +494,8 @@ export async function convertAsset(
     };
   }
 
+  const rateNote = `1 ${fromAsset.symbol} ≈ ${rate.toLocaleString(undefined, { maximumFractionDigits: 8 })} ${toAsset.symbol}`;
+
   try {
     await prisma.$transaction(async (tx) => {
       const debited = await tx.userBalance.updateMany({
@@ -455,8 +523,6 @@ export async function convertAsset(
         create: { userId: session.sub, assetId: toAssetId, balance: receiveAmount },
         update: { balance: { increment: receiveAmount } },
       });
-
-      const rateNote = `1 ${fromAsset.symbol} ≈ ${rate.toLocaleString(undefined, { maximumFractionDigits: 8 })} ${toAsset.symbol}`;
 
       await tx.transaction.create({
         data: {
@@ -496,6 +562,21 @@ export async function convertAsset(
     }
     throw error;
   }
+
+  await sendTransactionEmail({
+    to: session.email,
+    fullName: session.fullName,
+    subject: `Conversion complete: ${fromAsset.symbol} → ${toAsset.symbol}`,
+    headline: "Conversion complete",
+    intro: `Your conversion from ${fromAsset.symbol} to ${toAsset.symbol} has settled.`,
+    accent: "emerald",
+    rows: [
+      { label: "You paid", value: `${fmt(amount)} ${fromAsset.symbol}` },
+      { label: "You received", value: `${fmt(receiveAmount)} ${toAsset.symbol}` },
+      { label: "Rate", value: rateNote },
+      { label: "Network fee", value: `${fmt(feeInGasAsset)} ${gasAssetSymbol}` },
+    ],
+  });
 
   revalidatePath("/dashboard");
   return { error: null, success: true };
