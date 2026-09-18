@@ -4,6 +4,9 @@ import { revalidatePath } from "next/cache";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireAdminSession, type UserStatus } from "@/lib/auth";
+import { sendAccountActivatedEmail, sendTransactionEmail } from "@/lib/email";
+
+const fmt = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 8 });
 
 export interface ActionResult {
   error: string | null;
@@ -18,7 +21,21 @@ export async function toggleUserStatus(userId: string, status: UserStatus): Prom
 
   if (!userId) return { error: "Missing user.", success: false };
 
-  await prisma.user.update({ where: { id: userId }, data: { status } });
+  const user = await prisma.user.update({
+    where: { id: userId },
+    data: {
+      status,
+      // Clear any outstanding self-verification token once an admin has
+      // manually decided this account's status, so a stale emailed link
+      // can't do anything unexpected later.
+      ...(status !== "PENDING_APPROVAL" ? { emailVerificationToken: null, emailVerificationExpires: null } : {}),
+    },
+  });
+
+  if (status === "ACTIVE") {
+    await sendAccountActivatedEmail({ to: user.email, fullName: user.fullName });
+  }
+
   revalidatePath("/admin");
   return { error: null, success: true };
 }
@@ -108,7 +125,10 @@ export async function reviewDeposit(
 ): Promise<ActionResult> {
   await requireAdminSession();
 
-  const transaction = await prisma.transaction.findUnique({ where: { id: transactionId } });
+  const transaction = await prisma.transaction.findUnique({
+    where: { id: transactionId },
+    include: { user: true, asset: true },
+  });
   if (!transaction || transaction.type !== "DEPOSIT") {
     return { error: "Deposit not found.", success: false };
   }
@@ -152,6 +172,23 @@ export async function reviewDeposit(
     throw error;
   }
 
+  await sendTransactionEmail({
+    to: transaction.user.email,
+    fullName: transaction.user.fullName,
+    subject: action === "APPROVE" ? "Deposit approved" : "Deposit rejected",
+    headline: action === "APPROVE" ? "Deposit approved" : "Deposit rejected",
+    intro:
+      action === "APPROVE"
+        ? "Your deposit has been verified and credited to your account."
+        : "Your deposit could not be verified and was not credited.",
+    accent: action === "APPROVE" ? "emerald" : "red",
+    rows: [
+      { label: "Asset", value: transaction.asset.symbol },
+      { label: "Amount", value: `${fmt(Number(transaction.amount))} ${transaction.asset.symbol}` },
+      { label: "Status", value: nextStatus },
+    ],
+  });
+
   revalidatePath("/admin");
   revalidatePath("/dashboard");
   return { error: null, success: true };
@@ -164,7 +201,10 @@ export async function reviewWithdrawal(
 ): Promise<ActionResult> {
   await requireAdminSession();
 
-  const transaction = await prisma.transaction.findUnique({ where: { id: transactionId } });
+  const transaction = await prisma.transaction.findUnique({
+    where: { id: transactionId },
+    include: { user: true, asset: true, feeAsset: true },
+  });
   if (!transaction || transaction.type !== "WITHDRAWAL") {
     return { error: "Withdrawal not found.", success: false };
   }
@@ -240,6 +280,25 @@ export async function reviewWithdrawal(
     throw error;
   }
 
+  await sendTransactionEmail({
+    to: transaction.user.email,
+    fullName: transaction.user.fullName,
+    subject: action === "APPROVE" ? "Withdrawal sent" : "Withdrawal rejected",
+    headline: action === "APPROVE" ? "Withdrawal sent" : "Withdrawal rejected",
+    intro:
+      action === "APPROVE"
+        ? "Your withdrawal has been sent to your destination address."
+        : "Your withdrawal request could not be completed. The reserved amount and network fee have been refunded to your balance.",
+    accent: action === "APPROVE" ? "emerald" : "red",
+    rows: [
+      { label: "Asset", value: transaction.asset.symbol },
+      { label: "Amount", value: `${fmt(Number(transaction.amount))} ${transaction.asset.symbol}` },
+      { label: "Destination", value: transaction.destinationAddress ?? "—" },
+      ...(action === "APPROVE" && trimmedTxHash ? [{ label: "Transaction Hash", value: trimmedTxHash }] : []),
+      { label: "Status", value: nextStatus },
+    ],
+  });
+
   revalidatePath("/admin");
   revalidatePath("/dashboard");
   return { error: null, success: true };
@@ -307,6 +366,26 @@ export async function manualBalanceAdjustment(
       return { error: "Insufficient balance for this debit.", success: false };
     }
     throw error;
+  }
+
+  const [user, asset] = await Promise.all([
+    prisma.user.findUnique({ where: { id: userId } }),
+    prisma.asset.findUnique({ where: { id: assetId } }),
+  ]);
+  if (user && asset) {
+    await sendTransactionEmail({
+      to: user.email,
+      fullName: user.fullName,
+      subject: type === "CREDIT" ? "Balance credited" : "Balance debited",
+      headline: type === "CREDIT" ? "Your balance was credited" : "Your balance was debited",
+      intro: "A member of our custody desk made a manual adjustment to your account.",
+      accent: type === "CREDIT" ? "emerald" : "red",
+      rows: [
+        { label: "Asset", value: asset.symbol },
+        { label: "Amount", value: `${fmt(amount)} ${asset.symbol}` },
+        { label: "Reference", value: note },
+      ],
+    });
   }
 
   revalidatePath("/admin");
