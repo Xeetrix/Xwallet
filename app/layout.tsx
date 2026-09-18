@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
-import { ensureMasterAdmin } from "@/lib/bootstrap";
+import { ensureMasterAdmin, ensureDefaultAssets } from "@/lib/bootstrap";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-body" });
 const jetbrainsMono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-mono" });
@@ -14,6 +14,7 @@ export const metadata: Metadata = {
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   await ensureMasterAdmin();
+  await ensureDefaultAssets();
 
   return (
     <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable}`}>

@@ -14,6 +14,9 @@ const NETWORK_GAS_FEES: Record<string, number> = {
   "ETH:ERC20": 0.002,
   "SOL:SOL": 0.005,
   "BNB:BEP20": 0.0005,
+  "XRP:XRP": 0.2,
+  "ADA:ADA": 1,
+  "TRX:TRC20": 5,
 };
 
 // Fallback when the specific asset+network pair isn't in the table above,
@@ -23,6 +26,9 @@ const DEFAULT_GAS_FEE_BY_SYMBOL: Record<string, number> = {
   ETH: 0.002,
   SOL: 0.005,
   BNB: 0.0005,
+  XRP: 0.2,
+  ADA: 1,
+  TRX: 5,
 };
 
 /** Flat platform spread applied to every in-portal asset conversion. */
