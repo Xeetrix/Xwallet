@@ -11,6 +11,7 @@ import CryptoIcon from "@/components/CryptoIcon";
 import CopyTag from "@/components/CopyTag";
 import StatusBadge from "@/components/StatusBadge";
 import StatCard from "@/components/StatCard";
+import StatementExportCard from "@/components/StatementExportCard";
 
 const INCOMING_TYPES = new Set(["DEPOSIT", "MANUAL_CREDIT", "TRANSFER_RECEIVED", "SWAP_CREDIT"]);
 
@@ -18,7 +19,7 @@ export default async function DashboardPage() {
   const session = await getSession();
   if (!session) redirect("/login");
 
-  const [balances, assets, transactions] = await Promise.all([
+  const [balances, assets, transactions, currentUser] = await Promise.all([
     prisma.userBalance.findMany({
       where: { userId: session.sub },
       include: { asset: { include: { networkAddresses: { where: { isActive: true } } } } },
@@ -35,6 +36,7 @@ export default async function DashboardPage() {
       orderBy: { createdAt: "desc" },
       take: 20,
     }),
+    prisma.user.findUnique({ where: { id: session.sub }, select: { totpEnabled: true } }),
   ]);
 
   const prices = await fetchUsdPrices(balances.map((b) => b.asset.symbol));
@@ -72,8 +74,8 @@ export default async function DashboardPage() {
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <ConvertModal balances={serializedBalances} assets={assets} />
-          <TransferModal balances={serializedBalances} />
-          <WithdrawModal balances={serializedBalances} />
+          <TransferModal balances={serializedBalances} totpEnabled={currentUser?.totpEnabled ?? false} />
+          <WithdrawModal balances={serializedBalances} totpEnabled={currentUser?.totpEnabled ?? false} />
           <DepositModal assets={assets} />
         </div>
       </div>
@@ -165,6 +167,8 @@ export default async function DashboardPage() {
           </div>
         )}
       </div>
+
+      <StatementExportCard />
 
       <div className="luxury-card p-6">
         <h2 className="font-serif text-lg text-zinc-100 mb-5">Recent Ledger Activity</h2>

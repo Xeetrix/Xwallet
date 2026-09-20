@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowDownToLine, ArrowUpRight, ChevronLeft, ChevronRight, ScrollText } from "lucide-react";
+import { ArrowDownToLine, ArrowUpRight, ChevronLeft, ChevronRight, Download, ScrollText } from "lucide-react";
 import type { Prisma, TransactionStatus, TransactionType } from "@prisma/client";
 import { requireAdminSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -97,14 +97,30 @@ export default async function TransactionsLedgerPage({
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const page = Math.min(filters.page, totalPages);
 
+  const exportParams = new URLSearchParams();
+  if (filters.q) exportParams.set("q", filters.q);
+  if (filters.type) exportParams.set("type", filters.type);
+  if (filters.status) exportParams.set("status", filters.status);
+  if (filters.asset) exportParams.set("asset", filters.asset);
+  const exportQs = exportParams.toString();
+
   return (
     <div className="p-6 md:p-10 max-w-6xl mx-auto">
-      <div className="mb-8">
-        <p className="text-gold text-[10px] tracking-[0.35em] uppercase mb-1">Custody Operations</p>
-        <h1 className="font-serif text-2xl text-zinc-50 flex items-center gap-2">
-          <ScrollText className="w-5 h-5 text-gold" />
-          Transaction Ledger
-        </h1>
+      <div className="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <p className="text-gold text-[10px] tracking-[0.35em] uppercase mb-1">Custody Operations</p>
+          <h1 className="font-serif text-2xl text-zinc-50 flex items-center gap-2">
+            <ScrollText className="w-5 h-5 text-gold" />
+            Transaction Ledger
+          </h1>
+        </div>
+        <a
+          href={`/api/admin/ledger/csv${exportQs ? `?${exportQs}` : ""}`}
+          className="inline-flex items-center gap-2 rounded-lg border border-zinc-800/60 bg-zinc-900/40 hover:border-gold/40 text-zinc-100 text-sm font-medium px-4 py-2.5 transition self-start"
+        >
+          <Download className="w-4 h-4 text-gold" />
+          Export CSV
+        </a>
       </div>
 
       <div className="luxury-card p-6 mb-8">

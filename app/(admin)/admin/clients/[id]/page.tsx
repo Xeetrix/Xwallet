@@ -18,6 +18,8 @@ import StatusBadge from "@/components/StatusBadge";
 import StatCard from "@/components/StatCard";
 import UserStatusActions from "@/components/UserStatusActions";
 import ManualAdjustModal from "@/components/ManualAdjustModal";
+import ActiveSessionsPanel from "@/components/ActiveSessionsPanel";
+import KycSettingsForm from "@/components/KycSettingsForm";
 
 const INCOMING_TYPES = new Set(["DEPOSIT", "MANUAL_CREDIT", "TRANSFER_RECEIVED", "SWAP_CREDIT"]);
 
@@ -28,7 +30,7 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
   const client = await prisma.user.findUnique({ where: { id } });
   if (!client || client.role !== "CLIENT") notFound();
 
-  const [balances, transactions, assets] = await Promise.all([
+  const [balances, transactions, assets, sessions] = await Promise.all([
     prisma.userBalance.findMany({
       where: { userId: id },
       include: { asset: true },
@@ -41,6 +43,11 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
       take: 100,
     }),
     prisma.asset.findMany({ where: { isActive: true }, orderBy: { symbol: "asc" } }),
+    prisma.session.findMany({
+      where: { userId: id },
+      orderBy: { lastSeenAt: "desc" },
+      take: 20,
+    }),
   ]);
 
   const prices = await fetchUsdPrices(balances.map((b) => b.asset.symbol));
@@ -113,6 +120,21 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
           valueTone="emerald"
           value={transactions.length}
         />
+      </div>
+
+      <div className="luxury-card p-6 mb-8">
+        <h2 className="font-serif text-lg text-zinc-100 mb-5">Compliance &amp; Limits</h2>
+        <KycSettingsForm
+          userId={client.id}
+          kycTier={client.kycTier}
+          dailyLimitUsd={client.dailyLimitUsd ? Number(client.dailyLimitUsd) : null}
+          monthlyLimitUsd={client.monthlyLimitUsd ? Number(client.monthlyLimitUsd) : null}
+        />
+      </div>
+
+      <div className="luxury-card p-6 mb-8">
+        <h2 className="font-serif text-lg text-zinc-100 mb-5">Active Sessions</h2>
+        <ActiveSessionsPanel userId={client.id} sessions={sessions} />
       </div>
 
       <div className="luxury-card p-6 mb-8">

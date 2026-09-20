@@ -20,7 +20,13 @@ type BalanceWithAsset = Omit<UserBalance, "balance"> & {
 
 const initialState: TransferActionState = { error: null, success: false };
 
-export default function TransferModal({ balances }: { balances: BalanceWithAsset[] }) {
+export default function TransferModal({
+  balances,
+  totpEnabled = false,
+}: {
+  balances: BalanceWithAsset[];
+  totpEnabled?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const [assetId, setAssetId] = useState(balances[0]?.assetId ?? "");
   const [networkName, setNetworkName] = useState(balances[0]?.asset.networkAddresses[0]?.networkName ?? "");
@@ -238,6 +244,26 @@ export default function TransferModal({ balances }: { balances: BalanceWithAsset
               <p className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
                 {feeError}
               </p>
+            )}
+
+            {totpEnabled && (
+              <div>
+                <label className="block text-xs uppercase tracking-wider text-zinc-500 mb-1.5">
+                  2FA Code
+                </label>
+                <input
+                  name="totpCode"
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={10}
+                  required
+                  className="luxury-input text-center tracking-[0.3em] font-mono"
+                  placeholder="000000"
+                />
+                <p className="text-[11px] text-zinc-600 mt-1">
+                  Enter your authenticator code, or a backup code.
+                </p>
+              </div>
             )}
 
             {insufficientAmount && (

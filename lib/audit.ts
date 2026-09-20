@@ -7,7 +7,7 @@ import { prisma } from "@/lib/prisma";
  * x-forwarded-for). Never throws — an audit log missing an IP is far better
  * than an admin action failing because of a logging helper.
  */
-async function getClientIp(): Promise<string | null> {
+export async function getClientIp(): Promise<string | null> {
   try {
     const headerList = await headers();
     const forwardedFor = headerList.get("x-forwarded-for");
