@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { LogOut, ShieldCheck } from "lucide-react";
 import { getSession } from "@/lib/auth";
@@ -5,6 +6,11 @@ import { logoutUser } from "@/actions/auth-actions";
 import AdminNav from "@/components/AdminNav";
 import MobileNav from "@/components/MobileNav";
 import { BrandMark } from "@/components/brand-mark";
+
+export const metadata: Metadata = {
+  title: "Master Console",
+  robots: { index: false, follow: false },
+};
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession();

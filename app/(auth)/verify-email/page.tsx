@@ -1,5 +1,11 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { CheckCircle2, XCircle, Clock } from "lucide-react";
+
+export const metadata: Metadata = {
+  title: "Verify Email",
+  robots: { index: false, follow: false },
+};
 
 const STATUS_CONTENT: Record<
   string,

@@ -1,7 +1,13 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { MailCheck } from "lucide-react";
 import { getSession } from "@/lib/auth";
 import { logoutUser } from "@/actions/auth-actions";
+
+export const metadata: Metadata = {
+  title: "Application Received",
+  robots: { index: false, follow: false },
+};
 
 export default async function PendingPage() {
   const session = await getSession();
