@@ -15,6 +15,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { BrandMark } from "@/components/brand-mark";
 
 interface NavItem {
   href: string;
@@ -69,11 +70,14 @@ export default function MobileNav({
   return (
     <>
       <header className="md:hidden sticky top-0 z-40 flex items-center justify-between border-b border-zinc-800/60 bg-zinc-950/80 backdrop-blur-xl px-4 py-3.5">
-        <div>
-          <span className="text-gold text-[9px] tracking-[0.3em] uppercase block leading-none mb-1">
-            {eyebrow}
-          </span>
-          <span className="font-serif text-base text-zinc-50 leading-none">XWallet Asia</span>
+        <div className="flex items-center gap-2.5">
+          <BrandMark className="w-8 h-8 shrink-0" />
+          <div>
+            <span className="text-gold text-[9px] tracking-[0.3em] uppercase block leading-none mb-1">
+              {eyebrow}
+            </span>
+            <span className="font-serif text-base text-zinc-50 leading-none">XWallet Asia</span>
+          </div>
         </div>
         <button
           onClick={() => setOpen(true)}
@@ -92,11 +96,14 @@ export default function MobileNav({
           />
           <div className="absolute right-0 top-0 bottom-0 w-[85%] max-w-xs bg-zinc-950 border-l border-zinc-800/60 p-5 flex flex-col animate-slide-in">
             <div className="flex items-center justify-between mb-8">
-              <div>
-                <span className="text-gold text-[9px] tracking-[0.3em] uppercase block leading-none mb-1">
-                  {eyebrow}
-                </span>
-                <span className="font-serif text-base text-zinc-50 leading-none">XWallet Asia</span>
+              <div className="flex items-center gap-2.5">
+                <BrandMark className="w-8 h-8 shrink-0" />
+                <div>
+                  <span className="text-gold text-[9px] tracking-[0.3em] uppercase block leading-none mb-1">
+                    {eyebrow}
+                  </span>
+                  <span className="font-serif text-base text-zinc-50 leading-none">XWallet Asia</span>
+                </div>
               </div>
               <button
                 onClick={() => setOpen(false)}

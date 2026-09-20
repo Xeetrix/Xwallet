@@ -4,6 +4,7 @@ import { getSession } from "@/lib/auth";
 import { logoutUser } from "@/actions/auth-actions";
 import AdminNav from "@/components/AdminNav";
 import MobileNav from "@/components/MobileNav";
+import { BrandMark } from "@/components/brand-mark";
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession();
@@ -19,9 +20,12 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       />
 
       <aside className="hidden md:flex w-64 flex-col border-r border-zinc-800/60 bg-zinc-950/40 backdrop-blur-xl px-5 py-6">
-        <div className="mb-10">
-          <span className="text-gold text-[10px] tracking-[0.35em] uppercase">Master Console</span>
-          <h1 className="font-serif text-lg text-zinc-50">XWallet Asia</h1>
+        <div className="mb-10 flex items-center gap-3">
+          <BrandMark className="w-9 h-9 shrink-0" />
+          <div>
+            <span className="text-gold text-[10px] tracking-[0.35em] uppercase">Master Console</span>
+            <h1 className="font-serif text-lg text-zinc-50 leading-tight">XWallet Asia</h1>
+          </div>
         </div>
         <AdminNav />
         <div className="border-t border-zinc-800/60 pt-4 mt-4">
