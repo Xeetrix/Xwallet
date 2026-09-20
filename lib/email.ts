@@ -78,8 +78,15 @@ function renderShell(bodyHtml: string): string {
           <table role="presentation" width="100%" style="max-width:480px;background-color:#0F1117;border:1px solid rgba(255,255,255,0.08);border-radius:16px;overflow:hidden;">
             <tr>
               <td style="padding:28px 32px 20px 32px;border-bottom:1px solid rgba(255,255,255,0.06);">
-                <p style="margin:0;font-size:10px;letter-spacing:3px;text-transform:uppercase;color:#D4AF37;">Private Wealth &amp; Digital Asset Custody</p>
-                <p style="margin:4px 0 0 0;font-size:18px;color:#F5F5F5;font-weight:600;">XWallet Asia</p>
+                <table role="presentation" cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td style="width:36px;height:36px;border-radius:9px;background-color:#111420;border:1.5px solid #C79A3F;text-align:center;vertical-align:middle;font-size:16px;font-weight:700;color:#E5C06E;">X</td>
+                    <td style="padding-left:12px;vertical-align:middle;">
+                      <p style="margin:0;font-size:10px;letter-spacing:3px;text-transform:uppercase;color:#D4AF37;">Private Wealth &amp; Digital Asset Custody</p>
+                      <p style="margin:4px 0 0 0;font-size:18px;color:#F5F5F5;font-weight:600;">XWallet Asia</p>
+                    </td>
+                  </tr>
+                </table>
               </td>
             </tr>
             <tr>

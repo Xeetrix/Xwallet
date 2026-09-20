@@ -1,8 +1,11 @@
+import { BrandMark } from "@/components/brand-mark";
+
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-4 py-12">
       <div className="relative z-10 w-full max-w-md">
         <div className="mb-10 text-center">
+          <BrandMark className="w-12 h-12 mx-auto mb-4" />
           <div className="inline-flex items-center gap-2 mb-2">
             <span className="h-px w-8 bg-gold/60" />
             <span className="text-gold text-xs tracking-[0.35em] uppercase">Private Wealth</span>
