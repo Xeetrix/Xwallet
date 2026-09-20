@@ -1,10 +1,7 @@
 import { ImageResponse } from "next/og";
 import { brandBadge } from "@/lib/brand-icon";
 
-export const size = { width: 180, height: 180 };
-export const contentType = "image/png";
-
-export default function AppleIcon() {
+export async function GET() {
   return new ImageResponse(
     (
       <div
@@ -17,9 +14,9 @@ export default function AppleIcon() {
           background: "#090A10",
         }}
       >
-        {brandBadge(140)}
+        {brandBadge(150)}
       </div>
     ),
-    { ...size }
+    { width: 192, height: 192 }
   );
 }
