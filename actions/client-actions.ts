@@ -7,6 +7,8 @@ import { requireFreshClientSession } from "@/lib/auth";
 import { computeNetworkFee, TRANSFER_FEE_RATE, WITHDRAWAL_FEE_RATE, CONVERT_FEE_RATE } from "@/lib/fees";
 import { fetchUsdPrices } from "@/lib/pricing";
 import { sendTransactionEmail } from "@/lib/email";
+import { checkTransactionLimits } from "@/lib/limits";
+import { verifyTotpOrBackupCode } from "@/lib/totp-challenge";
 
 const fmt = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 8 });
 
@@ -187,6 +189,26 @@ export async function transferAsset(
     };
   }
 
+  const limitCheck = await checkTransactionLimits({
+    userId: session.sub,
+    assetSymbol: asset.symbol,
+    amount,
+    dailyLimitUsd: session.dailyLimitUsd,
+    monthlyLimitUsd: session.monthlyLimitUsd,
+  });
+  if (limitCheck.error) {
+    return { error: limitCheck.error, success: false };
+  }
+
+  const totpCheck = await verifyTotpOrBackupCode({
+    userId: session.sub,
+    totpEnabled: session.totpEnabled,
+    code: formData.get("totpCode") ? String(formData.get("totpCode")) : null,
+  });
+  if (totpCheck.error) {
+    return { error: totpCheck.error, success: false };
+  }
+
   try {
     await prisma.$transaction(async (tx) => {
       // Atomic conditional update: only debits if the balance still covers
@@ -343,6 +365,26 @@ export async function requestWithdrawal(
       error: `${gasAssetSymbol} is required to pay the ${networkName} network fee but isn't available on this platform.`,
       success: false,
     };
+  }
+
+  const limitCheck = await checkTransactionLimits({
+    userId: session.sub,
+    assetSymbol: asset.symbol,
+    amount,
+    dailyLimitUsd: session.dailyLimitUsd,
+    monthlyLimitUsd: session.monthlyLimitUsd,
+  });
+  if (limitCheck.error) {
+    return { error: limitCheck.error, success: false };
+  }
+
+  const totpCheck = await verifyTotpOrBackupCode({
+    userId: session.sub,
+    totpEnabled: session.totpEnabled,
+    code: formData.get("totpCode") ? String(formData.get("totpCode")) : null,
+  });
+  if (totpCheck.error) {
+    return { error: totpCheck.error, success: false };
   }
 
   try {

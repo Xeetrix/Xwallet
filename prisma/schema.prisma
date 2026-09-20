@@ -36,6 +36,17 @@ enum TransactionStatus {
   REJECTED
 }
 
+enum KycTier {
+  BASIC
+  VERIFIED
+  INSTITUTIONAL
+}
+
+enum UnattributedDepositStatus {
+  PENDING
+  ASSIGNED
+}
+
 model User {
   id           String     @id @default(cuid())
   fullName     String
@@ -57,9 +68,42 @@ model User {
   // valid code, so a secret existing alone never grants access.
   totpSecretEncrypted String?
   totpEnabled         Boolean @default(false)
+  // Single-use recovery codes issued once at enrollment, stored as bcrypt
+  // hashes (never plaintext) — each is removed from the array the moment
+  // it's consumed, so a leaked hash can't be replayed after the fact.
+  totpBackupCodesHash String[] @default([])
 
-  balances     UserBalance[]
-  transactions Transaction[]
+  // KYC tiering: BASIC is the default for every new account and carries no
+  // limits unless an admin sets one. Limits are opt-in (null = unlimited)
+  // so existing accounts are unaffected until an admin explicitly tightens
+  // them — see requireFreshClientSession()/checkTransactionLimits().
+  kycTier         KycTier  @default(BASIC)
+  dailyLimitUsd   Decimal? @db.Decimal(24, 2)
+  monthlyLimitUsd Decimal? @db.Decimal(24, 2)
+
+  balances         UserBalance[]
+  transactions     Transaction[]
+  sessions         Session[]
+  assignedDeposits UnattributedDeposit[]
+}
+
+// One row per issued session cookie, so a session can be identified,
+// audited, and force-revoked independently of the others — the JWT itself
+// carries this row's id as its `jti` claim. tokenHash is a SHA-256 digest
+// of the signed JWT (never the token itself), kept for audit/lookup
+// without storing anything that could itself be replayed as a credential.
+model Session {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash  String
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime  @default(now())
+  lastSeenAt DateTime  @default(now())
+  revokedAt  DateTime?
+
+  @@index([userId])
 }
 
 model Asset {
@@ -69,10 +113,11 @@ model Asset {
   logoUrl  String?
   isActive Boolean @default(true)
 
-  networkAddresses NetworkAddress[]
-  balances         UserBalance[]
-  transactions     Transaction[]
-  feeTransactions  Transaction[] @relation("TransactionFeeAsset")
+  networkAddresses     NetworkAddress[]
+  balances             UserBalance[]
+  transactions         Transaction[]
+  feeTransactions      Transaction[]         @relation("TransactionFeeAsset")
+  unattributedDeposits UnattributedDeposit[]
 }
 
 model NetworkAddress {
@@ -122,6 +167,25 @@ model Transaction {
   status            TransactionStatus @default(PENDING)
   referenceNote     String?
   createdAt         DateTime          @default(now())
+}
+
+// An on-chain deposit reported by a webhook (see app/api/webhooks/deposit)
+// that couldn't be auto-matched to a client-submitted PENDING deposit by
+// txHash — sits in this queue for an admin to assign to the correct client
+// with one click, at which point a normal approved Transaction row is
+// created for them and this row flips to ASSIGNED.
+model UnattributedDeposit {
+  id             String                    @id @default(cuid())
+  assetId        String
+  asset          Asset                     @relation(fields: [assetId], references: [id])
+  networkName    String
+  walletAddress  String
+  amount         Decimal                   @db.Decimal(24, 8)
+  txHash         String                    @unique
+  status         UnattributedDepositStatus @default(PENDING)
+  assignedUserId String?
+  assignedUser   User?                     @relation(fields: [assignedUserId], references: [id])
+  createdAt      DateTime                  @default(now())
 }
 
 // Append-only security trail for admin actions that change account state or

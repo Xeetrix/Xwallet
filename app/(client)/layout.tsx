@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { LayoutDashboard, LogOut, ShieldCheck } from "lucide-react";
+import { LogOut, ShieldCheck } from "lucide-react";
 import { getSession } from "@/lib/auth";
 import { logoutUser } from "@/actions/auth-actions";
 import MobileNav from "@/components/MobileNav";
+import ClientNav from "@/components/ClientNav";
 import { BrandMark } from "@/components/brand-mark";
 
 export const metadata: Metadata = {
@@ -34,12 +35,7 @@ export default async function ClientLayout({ children }: { children: React.React
             <h1 className="font-serif text-lg text-zinc-50 leading-tight">XWallet Asia</h1>
           </div>
         </div>
-        <nav className="flex-1 space-y-1">
-          <div className="flex items-center gap-2.5 rounded-lg bg-gold/10 border border-gold/20 text-gold px-3 py-2.5 text-sm">
-            <LayoutDashboard className="w-4 h-4" />
-            Portfolio
-          </div>
-        </nav>
+        <ClientNav />
         <div className="border-t border-zinc-800/60 pt-4 mt-4">
           <div className="flex items-center gap-2 text-xs text-zinc-500 mb-3">
             <ShieldCheck className="w-3.5 h-3.5 text-emerald" />

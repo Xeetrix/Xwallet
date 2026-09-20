@@ -2,22 +2,20 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutGrid, Coins, ScrollText, Inbox } from "lucide-react";
+import { LayoutDashboard, ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const ADMIN_NAV_ITEMS = [
-  { href: "/admin", label: "Console", icon: LayoutGrid, exact: true },
-  { href: "/admin/transactions", label: "Transactions", icon: ScrollText, exact: false },
-  { href: "/admin/deposits", label: "Unattributed", icon: Inbox, exact: false },
-  { href: "/admin/assets", label: "Assets", icon: Coins, exact: false },
+const CLIENT_NAV_ITEMS = [
+  { href: "/dashboard", label: "Portfolio", icon: LayoutDashboard, exact: true },
+  { href: "/dashboard/security", label: "Security", icon: ShieldCheck, exact: false },
 ];
 
-export default function AdminNav() {
+export default function ClientNav() {
   const pathname = usePathname();
 
   return (
     <nav className="flex-1 space-y-1">
-      {ADMIN_NAV_ITEMS.map(({ href, label, icon: Icon, exact }) => {
+      {CLIENT_NAV_ITEMS.map(({ href, label, icon: Icon, exact }) => {
         const active = exact ? pathname === href : pathname.startsWith(href);
         return (
           <Link

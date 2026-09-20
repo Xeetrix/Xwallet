@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { Prisma } from "@prisma/client";
+import { Prisma, type KycTier } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireAdminSession, type UserStatus } from "@/lib/auth";
 import { sendAccountActivatedEmail, sendTransactionEmail } from "@/lib/email";
@@ -449,5 +449,155 @@ export async function manualBalanceAdjustment(
 
   revalidatePath("/admin");
   revalidatePath("/dashboard");
+  return { error: null, success: true };
+}
+
+export async function revokeSession(sessionId: string, userId: string): Promise<ActionResult> {
+  const admin = await requireAdminSession();
+
+  const session = await prisma.session.findUnique({ where: { id: sessionId } });
+  if (!session || session.userId !== userId) {
+    return { error: "Session not found.", success: false };
+  }
+  if (session.revokedAt) {
+    return { error: "This session has already been revoked.", success: false };
+  }
+
+  await prisma.session.update({ where: { id: sessionId }, data: { revokedAt: new Date() } });
+
+  await writeAuditLog({
+    actorId: admin.sub,
+    action: "SESSION_REVOKED",
+    targetType: "User",
+    targetId: userId,
+    metadata: { sessionId, ipAddress: session.ipAddress, userAgent: session.userAgent },
+  });
+
+  revalidatePath(`/admin/clients/${userId}`);
+  return { error: null, success: true };
+}
+
+export async function assignUnattributedDeposit(
+  unattributedDepositId: string,
+  userId: string
+): Promise<ActionResult> {
+  const admin = await requireAdminSession();
+
+  const deposit = await prisma.unattributedDeposit.findUnique({
+    where: { id: unattributedDepositId },
+    include: { asset: true },
+  });
+  if (!deposit) {
+    return { error: "Unattributed deposit not found.", success: false };
+  }
+  if (deposit.status !== "PENDING") {
+    return { error: "This deposit has already been assigned.", success: false };
+  }
+
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user || user.role !== "CLIENT") {
+    return { error: "Selected client not found.", success: false };
+  }
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      const updated = await tx.unattributedDeposit.updateMany({
+        where: { id: unattributedDepositId, status: "PENDING" },
+        data: { status: "ASSIGNED", assignedUserId: userId },
+      });
+      if (updated.count === 0) {
+        throw new AlreadyReviewedError();
+      }
+
+      // Reuses the same txHash unique constraint as every other deposit
+      // path — a create here can never double-credit the same on-chain
+      // event, since UnattributedDeposit.txHash and Transaction.txHash
+      // draw from the same value and Transaction.txHash is globally unique.
+      await tx.transaction.create({
+        data: {
+          userId,
+          assetId: deposit.assetId,
+          networkName: deposit.networkName,
+          type: "DEPOSIT",
+          amount: deposit.amount,
+          txHash: deposit.txHash,
+          status: "APPROVED",
+          referenceNote: "Matched from unattributed on-chain deposit queue.",
+        },
+      });
+
+      await tx.userBalance.upsert({
+        where: { userId_assetId: { userId, assetId: deposit.assetId } },
+        create: { userId, assetId: deposit.assetId, balance: deposit.amount },
+        update: { balance: { increment: deposit.amount } },
+      });
+    });
+  } catch (error) {
+    if (error instanceof AlreadyReviewedError) {
+      return { error: "This deposit has already been assigned.", success: false };
+    }
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      return { error: "This transaction hash is already recorded against another transaction.", success: false };
+    }
+    throw error;
+  }
+
+  await writeAuditLog({
+    actorId: admin.sub,
+    action: "UNATTRIBUTED_DEPOSIT_ASSIGNED",
+    targetType: "UnattributedDeposit",
+    targetId: unattributedDepositId,
+    metadata: { assignedUserId: userId, txHash: deposit.txHash, amount: deposit.amount.toString() },
+  });
+
+  await sendTransactionEmail({
+    to: user.email,
+    fullName: user.fullName,
+    subject: "Deposit approved",
+    headline: "Deposit approved",
+    intro: "Your deposit has been verified on-chain and credited to your account.",
+    accent: "emerald",
+    rows: [
+      { label: "Asset", value: deposit.asset.symbol },
+      { label: "Amount", value: `${fmt(Number(deposit.amount))} ${deposit.asset.symbol}` },
+      { label: "Status", value: "APPROVED" },
+    ],
+  });
+
+  revalidatePath("/admin/deposits");
+  revalidatePath("/admin");
+  revalidatePath("/dashboard");
+  return { error: null, success: true };
+}
+
+export async function updateClientKyc(
+  userId: string,
+  kycTier: KycTier,
+  dailyLimitUsd: number | null,
+  monthlyLimitUsd: number | null
+): Promise<ActionResult> {
+  const admin = await requireAdminSession();
+
+  if (dailyLimitUsd !== null && (!Number.isFinite(dailyLimitUsd) || dailyLimitUsd < 0)) {
+    return { error: "Daily limit must be a non-negative number.", success: false };
+  }
+  if (monthlyLimitUsd !== null && (!Number.isFinite(monthlyLimitUsd) || monthlyLimitUsd < 0)) {
+    return { error: "Monthly limit must be a non-negative number.", success: false };
+  }
+
+  await prisma.user.update({
+    where: { id: userId },
+    data: { kycTier, dailyLimitUsd, monthlyLimitUsd },
+  });
+
+  await writeAuditLog({
+    actorId: admin.sub,
+    action: "KYC_SETTINGS_UPDATED",
+    targetType: "User",
+    targetId: userId,
+    metadata: { kycTier, dailyLimitUsd, monthlyLimitUsd },
+  });
+
+  revalidatePath(`/admin/clients/${userId}`);
   return { error: null, success: true };
 }
