@@ -1,8 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { requireSession } from "@/lib/auth";
+import { requireFreshClientSession } from "@/lib/auth";
 import { computeNetworkFee, TRANSFER_FEE_RATE, WITHDRAWAL_FEE_RATE, CONVERT_FEE_RATE } from "@/lib/fees";
 import { fetchUsdPrices } from "@/lib/pricing";
 import { sendTransactionEmail } from "@/lib/email";
@@ -52,7 +53,7 @@ export async function submitDeposit(
   _prevState: DepositActionState,
   formData: FormData
 ): Promise<DepositActionState> {
-  const session = await requireSession();
+  const session = await requireFreshClientSession();
 
   if (session.role !== "CLIENT" || session.status !== "ACTIVE") {
     return { error: "You must be an active client to submit a deposit.", success: false };
@@ -77,17 +78,35 @@ export async function submitDeposit(
     return { error: "Selected asset is not available.", success: false };
   }
 
-  await prisma.transaction.create({
-    data: {
-      userId: session.sub,
-      assetId,
-      networkName,
-      type: "DEPOSIT",
-      amount,
-      txHash,
-      status: "PENDING",
-    },
-  });
+  // Rejects the same on-chain deposit being submitted twice — under any
+  // status, not just PENDING/APPROVED, since even a REJECTED row proves
+  // this exact hash was already reviewed once. The DB-level unique
+  // constraint on Transaction.txHash is the hard backstop for the race
+  // between this check and the create below; P2002 there is treated the
+  // same as failing this check up front.
+  const existingDeposit = await prisma.transaction.findUnique({ where: { txHash } });
+  if (existingDeposit) {
+    return { error: "This transaction hash has already been submitted.", success: false };
+  }
+
+  try {
+    await prisma.transaction.create({
+      data: {
+        userId: session.sub,
+        assetId,
+        networkName,
+        type: "DEPOSIT",
+        amount,
+        txHash,
+        status: "PENDING",
+      },
+    });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      return { error: "This transaction hash has already been submitted.", success: false };
+    }
+    throw error;
+  }
 
   await sendTransactionEmail({
     to: session.email,
@@ -118,7 +137,7 @@ export async function transferAsset(
   _prevState: TransferActionState,
   formData: FormData
 ): Promise<TransferActionState> {
-  const session = await requireSession();
+  const session = await requireFreshClientSession();
 
   if (session.role !== "CLIENT" || session.status !== "ACTIVE") {
     return { error: "You must be an active client to transfer funds.", success: false };
@@ -288,7 +307,7 @@ export async function requestWithdrawal(
   _prevState: WithdrawActionState,
   formData: FormData
 ): Promise<WithdrawActionState> {
-  const session = await requireSession();
+  const session = await requireFreshClientSession();
 
   if (session.role !== "CLIENT" || session.status !== "ACTIVE") {
     return { error: "You must be an active client to request a withdrawal.", success: false };
@@ -453,7 +472,7 @@ export async function convertAsset(
   _prevState: SwapActionState,
   formData: FormData
 ): Promise<SwapActionState> {
-  const session = await requireSession();
+  const session = await requireFreshClientSession();
 
   if (session.role !== "CLIENT" || session.status !== "ACTIVE") {
     return { error: "You must be an active client to convert funds.", success: false };
