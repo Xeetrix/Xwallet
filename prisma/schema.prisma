@@ -51,6 +51,13 @@ model User {
   emailVerificationToken   String?   @unique
   emailVerificationExpires DateTime?
 
+  // TOTP is mandatory for ADMIN accounts. The secret is generated on first
+  // login and stored encrypted at rest (see lib/crypto.ts) — totpEnabled
+  // only flips true once the admin has proven possession by entering a
+  // valid code, so a secret existing alone never grants access.
+  totpSecretEncrypted String?
+  totpEnabled         Boolean @default(false)
+
   balances     UserBalance[]
   transactions Transaction[]
 }
@@ -105,8 +112,32 @@ model Transaction {
   feeAsset          Asset?            @relation("TransactionFeeAsset", fields: [feeAssetId], references: [id])
   counterpartyEmail String?
   destinationAddress String?
-  txHash            String?
+  // Unique (not just indexed) so the same on-chain deposit can never be
+  // credited twice — Postgres unique indexes permit any number of NULLs,
+  // so transfers/swaps/manual adjustments (which never set a txHash) are
+  // unaffected. submitDeposit() also pre-checks this for a friendly error
+  // message; this constraint is the hard backstop against the same race
+  // that pattern is otherwise vulnerable to.
+  txHash            String?           @unique
   status            TransactionStatus @default(PENDING)
   referenceNote     String?
   createdAt         DateTime          @default(now())
+}
+
+// Append-only security trail for admin actions that change account state or
+// configuration but aren't themselves a Transaction row (status changes,
+// asset/address configuration) — Transaction already covers money movement,
+// this covers everything else an admin can do.
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String
+  action     String
+  targetType String
+  targetId   String?
+  ipAddress  String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  @@index([actorId])
+  @@index([targetType, targetId])
 }

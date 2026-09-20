@@ -5,6 +5,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireAdminSession, type UserStatus } from "@/lib/auth";
 import { sendAccountActivatedEmail, sendTransactionEmail } from "@/lib/email";
+import { writeAuditLog } from "@/lib/audit";
 
 const fmt = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 8 });
 
@@ -17,7 +18,7 @@ class AlreadyReviewedError extends Error {}
 class InsufficientBalanceError extends Error {}
 
 export async function toggleUserStatus(userId: string, status: UserStatus): Promise<ActionResult> {
-  await requireAdminSession();
+  const admin = await requireAdminSession();
 
   if (!userId) return { error: "Missing user.", success: false };
 
@@ -30,6 +31,14 @@ export async function toggleUserStatus(userId: string, status: UserStatus): Prom
       // can't do anything unexpected later.
       ...(status !== "PENDING_APPROVAL" ? { emailVerificationToken: null, emailVerificationExpires: null } : {}),
     },
+  });
+
+  await writeAuditLog({
+    actorId: admin.sub,
+    action: "USER_STATUS_CHANGED",
+    targetType: "User",
+    targetId: userId,
+    metadata: { newStatus: status, targetEmail: user.email },
   });
 
   if (status === "ACTIVE") {
@@ -82,7 +91,7 @@ export async function configureAssetAddress(
   _prevState: ActionResult,
   formData: FormData
 ): Promise<ActionResult> {
-  await requireAdminSession();
+  const admin = await requireAdminSession();
 
   const assetId = String(formData.get("assetId") ?? "");
   const networkName = String(formData.get("networkName") ?? "").trim().toUpperCase();
@@ -107,6 +116,14 @@ export async function configureAssetAddress(
     return { error: "Could not save the receiving address. Please try again.", success: false };
   }
 
+  await writeAuditLog({
+    actorId: admin.sub,
+    action: "NETWORK_ADDRESS_CONFIGURED",
+    targetType: "Asset",
+    targetId: assetId,
+    metadata: { networkName, walletAddress },
+  });
+
   revalidatePath("/admin/assets");
   return { error: null, success: true };
 }
@@ -123,7 +140,7 @@ export async function reviewDeposit(
   transactionId: string,
   action: "APPROVE" | "REJECT"
 ): Promise<ActionResult> {
-  await requireAdminSession();
+  const admin = await requireAdminSession();
 
   const transaction = await prisma.transaction.findUnique({
     where: { id: transactionId },
@@ -172,6 +189,19 @@ export async function reviewDeposit(
     throw error;
   }
 
+  await writeAuditLog({
+    actorId: admin.sub,
+    action: action === "APPROVE" ? "DEPOSIT_APPROVED" : "DEPOSIT_REJECTED",
+    targetType: "Transaction",
+    targetId: transactionId,
+    metadata: {
+      amount: transaction.amount.toString(),
+      assetSymbol: transaction.asset.symbol,
+      txHash: transaction.txHash,
+      clientEmail: transaction.user.email,
+    },
+  });
+
   await sendTransactionEmail({
     to: transaction.user.email,
     fullName: transaction.user.fullName,
@@ -199,7 +229,7 @@ export async function reviewWithdrawal(
   action: "APPROVE" | "REJECT",
   txHash?: string
 ): Promise<ActionResult> {
-  await requireAdminSession();
+  const admin = await requireAdminSession();
 
   const transaction = await prisma.transaction.findUnique({
     where: { id: transactionId },
@@ -277,8 +307,28 @@ export async function reviewWithdrawal(
     if (error instanceof AlreadyReviewedError) {
       return { error: "This withdrawal has already been reviewed.", success: false };
     }
+    // Transaction.txHash is unique across the whole table (see the deposit
+    // dedup migration) — this also catches an admin accidentally pasting a
+    // hash that's already recorded against a different transaction.
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      return { error: "This transaction hash is already recorded against another transaction.", success: false };
+    }
     throw error;
   }
+
+  await writeAuditLog({
+    actorId: admin.sub,
+    action: action === "APPROVE" ? "WITHDRAWAL_APPROVED" : "WITHDRAWAL_REJECTED",
+    targetType: "Transaction",
+    targetId: transactionId,
+    metadata: {
+      amount: transaction.amount.toString(),
+      assetSymbol: transaction.asset.symbol,
+      destinationAddress: transaction.destinationAddress,
+      txHash: trimmedTxHash ?? transaction.txHash,
+      clientEmail: transaction.user.email,
+    },
+  });
 
   await sendTransactionEmail({
     to: transaction.user.email,
@@ -308,7 +358,7 @@ export async function manualBalanceAdjustment(
   _prevState: ActionResult,
   formData: FormData
 ): Promise<ActionResult> {
-  await requireAdminSession();
+  const admin = await requireAdminSession();
 
   const userId = String(formData.get("userId") ?? "");
   const assetId = String(formData.get("assetId") ?? "");
@@ -372,6 +422,15 @@ export async function manualBalanceAdjustment(
     prisma.user.findUnique({ where: { id: userId } }),
     prisma.asset.findUnique({ where: { id: assetId } }),
   ]);
+
+  await writeAuditLog({
+    actorId: admin.sub,
+    action: type === "CREDIT" ? "MANUAL_BALANCE_CREDITED" : "MANUAL_BALANCE_DEBITED",
+    targetType: "User",
+    targetId: userId,
+    metadata: { assetSymbol: asset?.symbol, amount, note },
+  });
+
   if (user && asset) {
     await sendTransactionEmail({
       to: user.email,
