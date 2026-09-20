@@ -1,9 +1,15 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { LayoutDashboard, LogOut, ShieldCheck } from "lucide-react";
 import { getSession } from "@/lib/auth";
 import { logoutUser } from "@/actions/auth-actions";
 import MobileNav from "@/components/MobileNav";
 import { BrandMark } from "@/components/brand-mark";
+
+export const metadata: Metadata = {
+  title: "Portfolio",
+  robots: { index: false, follow: false },
+};
 
 export default async function ClientLayout({ children }: { children: React.ReactNode }) {
   const session = await getSession();
