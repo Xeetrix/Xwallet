@@ -14,6 +14,7 @@ const STATUS_CONFIG: Record<string, { label: string; tone: Tone }> = {
   PENDING_APPROVAL: { label: "Pending Approval", tone: "gold" },
   SUSPENDED: { label: "Suspended", tone: "red" },
   PENDING: { label: "Pending", tone: "gold" },
+  QUEUED: { label: "Queued", tone: "gold" },
   APPROVED: { label: "Approved", tone: "emerald" },
   REJECTED: { label: "Rejected", tone: "red" },
 };

@@ -32,8 +32,19 @@ enum TransactionType {
 
 enum TransactionStatus {
   PENDING
+  // Withdrawal-only intermediate state: an admin has approved the request
+  // and a multi-sig proposal payload has been queued (see
+  // Transaction.multisigProposal), but no on-chain execution has been
+  // confirmed yet. Every other transaction type goes straight from
+  // PENDING to APPROVED/REJECTED and never passes through this state.
+  QUEUED
   APPROVED
   REJECTED
+}
+
+enum LedgerDirection {
+  DEBIT
+  CREDIT
 }
 
 enum KycTier {
@@ -87,6 +98,39 @@ model User {
   assignedDeposits UnattributedDeposit[]
 }
 
+// A cold-storage / multi-sig custody wallet the platform actually holds
+// funds in, tracked here as a scaffold for institutional custody. This is
+// deliberately not wired to a live signer (Safe Transaction Service, an
+// MPC provider's API, ...) — reserves are recorded by an admin via
+// VaultReserve as an as-of snapshot, not read on-chain in real time.
+model CustodyVault {
+  id           String         @id @default(cuid())
+  name         String
+  provider     String // "GNOSIS_SAFE" | "MPC_FIREBLOCKS" | ...
+  chainId      Int
+  vaultAddress String
+  threshold    Int
+  signers      String[]
+  isActive     Boolean        @default(true)
+  createdAt    DateTime       @default(now())
+  reserves     VaultReserve[]
+}
+
+// An admin-recorded snapshot of one vault's balance in one asset, used by
+// the Proof-of-Reserve dashboard (/admin/reserves) as the "reserves" side
+// of the solvency comparison against total client liabilities.
+model VaultReserve {
+  id        String       @id @default(cuid())
+  vaultId   String
+  vault     CustodyVault @relation(fields: [vaultId], references: [id], onDelete: Cascade)
+  assetId   String
+  asset     Asset        @relation(fields: [assetId], references: [id])
+  balance   Decimal      @db.Decimal(24, 8)
+  updatedAt DateTime     @updatedAt
+
+  @@unique([vaultId, assetId])
+}
+
 // One row per issued session cookie, so a session can be identified,
 // audited, and force-revoked independently of the others — the JWT itself
 // carries this row's id as its `jti` claim. tokenHash is a SHA-256 digest
@@ -118,6 +162,8 @@ model Asset {
   transactions         Transaction[]
   feeTransactions      Transaction[]         @relation("TransactionFeeAsset")
   unattributedDeposits UnattributedDeposit[]
+  vaultReserves        VaultReserve[]
+  ledgerEntries        LedgerEntry[]
 }
 
 model NetworkAddress {
@@ -167,6 +213,45 @@ model Transaction {
   status            TransactionStatus @default(PENDING)
   referenceNote     String?
   createdAt         DateTime          @default(now())
+
+  // Multi-sig withdrawal workflow: populated when a WITHDRAWAL moves from
+  // PENDING to QUEUED (see reviewWithdrawal) — the parameters an off-chain
+  // Safe/MPC signing process needs (destination, value, asset, chain,
+  // vault, threshold/signers at proposal time). Never populated for any
+  // other transaction type.
+  multisigProposal Json?
+
+  // Advisory-only transaction-monitoring flag (lib/velocity.ts) — set at
+  // creation time for TRANSFER_SENT/WITHDRAWAL rows that look anomalous
+  // against the sending user's own history. Never blocks the transaction,
+  // only surfaces it for admin review (ANOMALY_REVIEW tag on
+  // /admin/transactions).
+  flaggedForReview Boolean @default(false)
+  flagReason       String?
+
+  ledgerEntries LedgerEntry[]
+}
+
+// Immutable double-entry journal. Every UserBalance mutation anywhere in
+// the app must write a balanced set of these in the same DB transaction —
+// see lib/ledger.ts, which both provides the write helper and the
+// reconciliation utility that proves UserBalance is exactly reconstructible
+// from this table. accountId is a User.id for a real client, or one of the
+// fixed system account labels (SYSTEM_RESERVE, GAS_FEE_COLLECTOR) — it is
+// deliberately not a foreign key, since system accounts aren't User rows.
+model LedgerEntry {
+  id            String          @id @default(cuid())
+  transactionId String
+  transaction   Transaction     @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  accountId     String
+  assetId       String
+  asset         Asset           @relation(fields: [assetId], references: [id])
+  direction     LedgerDirection
+  amount        Decimal         @db.Decimal(24, 8)
+  createdAt     DateTime        @default(now())
+
+  @@index([accountId, assetId])
+  @@index([transactionId])
 }
 
 // An on-chain deposit reported by a webhook (see app/api/webhooks/deposit)

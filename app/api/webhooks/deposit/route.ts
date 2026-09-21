@@ -4,6 +4,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { writeAuditLog } from "@/lib/audit";
 import { sendTransactionEmail } from "@/lib/email";
+import { writeLedgerEntries, SYSTEM_RESERVE_ACCOUNT } from "@/lib/ledger";
 
 const fmt = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 8 });
 
@@ -110,6 +111,11 @@ export async function POST(request: NextRequest) {
           create: { userId: transaction.userId, assetId: transaction.assetId, balance: transaction.amount },
           update: { balance: { increment: transaction.amount } },
         });
+
+        await writeLedgerEntries(tx, transaction.id, [
+          { accountId: transaction.userId, assetId: transaction.assetId, direction: "CREDIT", amount: transaction.amount },
+          { accountId: SYSTEM_RESERVE_ACCOUNT, assetId: transaction.assetId, direction: "DEBIT", amount: transaction.amount },
+        ]);
       });
     } catch (error) {
       console.error("[webhook/deposit] Failed to auto-approve matched deposit:", error);

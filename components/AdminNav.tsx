@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutGrid, Coins, ScrollText, Inbox } from "lucide-react";
+import { LayoutGrid, Coins, ScrollText, Inbox, Vault } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const ADMIN_NAV_ITEMS = [
@@ -10,6 +10,7 @@ const ADMIN_NAV_ITEMS = [
   { href: "/admin/transactions", label: "Transactions", icon: ScrollText, exact: false },
   { href: "/admin/deposits", label: "Unattributed", icon: Inbox, exact: false },
   { href: "/admin/assets", label: "Assets", icon: Coins, exact: false },
+  { href: "/admin/reserves", label: "Reserves", icon: Vault, exact: false },
 ];
 
 export default function AdminNav() {

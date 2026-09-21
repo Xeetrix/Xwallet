@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { fetchUsdPrices } from "@/lib/pricing";
 import UserStatusActions from "@/components/UserStatusActions";
 import DepositReviewActions from "@/components/DepositReviewActions";
-import WithdrawalReviewActions from "@/components/WithdrawalReviewActions";
+import WithdrawalReviewActions, { type MultisigProposal } from "@/components/WithdrawalReviewActions";
 import ManualAdjustModal from "@/components/ManualAdjustModal";
 import StatCard from "@/components/StatCard";
 import StatusBadge from "@/components/StatusBadge";
@@ -74,7 +74,7 @@ export default async function AdminConsolePage({
       orderBy: { createdAt: "asc" },
     }),
     prisma.transaction.findMany({
-      where: { type: "WITHDRAWAL", status: "PENDING" },
+      where: { type: "WITHDRAWAL", status: { in: ["PENDING", "QUEUED"] } },
       include: { user: true, asset: true, feeAsset: true },
       orderBy: { createdAt: "asc" },
     }),
@@ -234,6 +234,19 @@ export default async function AdminConsolePage({
                           (+ {Number(t.feeAmount).toLocaleString()} {t.feeAsset?.symbol ?? t.asset.symbol} fee)
                         </span>
                       )}
+                      {t.status === "QUEUED" && (
+                        <span className="ml-2 text-[10px] uppercase tracking-wide rounded-full px-2 py-0.5 bg-gold/10 text-gold border border-gold/30">
+                          Queued
+                        </span>
+                      )}
+                      {t.flaggedForReview && (
+                        <span
+                          title={t.flagReason ?? undefined}
+                          className="ml-2 text-[10px] uppercase tracking-wide rounded-full px-2 py-0.5 bg-red-500/10 text-red-400 border border-red-500/30"
+                        >
+                          Anomaly Review
+                        </span>
+                      )}
                     </p>
                     <div className="mt-1 flex items-center gap-2">
                       <span className="text-[11px] text-zinc-600 uppercase tracking-wide">
@@ -248,7 +261,11 @@ export default async function AdminConsolePage({
                     </div>
                   </div>
                 </div>
-                <WithdrawalReviewActions transactionId={t.id} />
+                <WithdrawalReviewActions
+                  transactionId={t.id}
+                  status={t.status as "PENDING" | "QUEUED"}
+                  multisigProposal={t.multisigProposal as unknown as MultisigProposal | null}
+                />
               </div>
             ))}
           </div>
