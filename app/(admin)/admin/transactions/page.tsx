@@ -1,5 +1,13 @@
 import Link from "next/link";
-import { ArrowDownToLine, ArrowUpRight, ChevronLeft, ChevronRight, Download, ScrollText } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowDownToLine,
+  ArrowUpRight,
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  ScrollText,
+} from "lucide-react";
 import type { Prisma, TransactionStatus, TransactionType } from "@prisma/client";
 import { requireAdminSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -17,7 +25,7 @@ const TRANSACTION_TYPES: TransactionType[] = [
   "SWAP_DEBIT",
   "SWAP_CREDIT",
 ];
-const TRANSACTION_STATUSES: TransactionStatus[] = ["PENDING", "APPROVED", "REJECTED"];
+const TRANSACTION_STATUSES: TransactionStatus[] = ["PENDING", "QUEUED", "APPROVED", "REJECTED"];
 const PAGE_SIZE = 50;
 
 interface Filters {
@@ -25,6 +33,7 @@ interface Filters {
   type: string;
   status: string;
   asset: string;
+  flagged: boolean;
   page: number;
 }
 
@@ -39,6 +48,7 @@ function parseFilters(raw: Record<string, string | string[] | undefined>): Filte
     type: get("type"),
     status: get("status"),
     asset: get("asset").toUpperCase(),
+    flagged: get("flagged") === "1",
     page: Number.isFinite(pageRaw) && pageRaw > 1 ? Math.floor(pageRaw) : 1,
   };
 }
@@ -50,6 +60,7 @@ function buildQueryString(filters: Filters, overrides: Partial<Filters>): string
   if (merged.type) params.set("type", merged.type);
   if (merged.status) params.set("status", merged.status);
   if (merged.asset) params.set("asset", merged.asset);
+  if (merged.flagged) params.set("flagged", "1");
   if (merged.page > 1) params.set("page", String(merged.page));
   const qs = params.toString();
   return qs ? `?${qs}` : "";
@@ -81,6 +92,9 @@ export default async function TransactionsLedgerPage({
       ],
     };
   }
+  if (filters.flagged) {
+    where.flaggedForReview = true;
+  }
 
   const [total, transactions, assets] = await Promise.all([
     prisma.transaction.count({ where }),
@@ -102,6 +116,7 @@ export default async function TransactionsLedgerPage({
   if (filters.type) exportParams.set("type", filters.type);
   if (filters.status) exportParams.set("status", filters.status);
   if (filters.asset) exportParams.set("asset", filters.asset);
+  if (filters.flagged) exportParams.set("flagged", "1");
   const exportQs = exportParams.toString();
 
   return (
@@ -164,6 +179,21 @@ export default async function TransactionsLedgerPage({
               ))}
             </select>
           </div>
+          <div className="lg:col-span-5 flex items-center gap-4">
+            <label className="flex items-center gap-2 text-xs text-zinc-400 cursor-pointer">
+              <input
+                type="checkbox"
+                name="flagged"
+                value="1"
+                defaultChecked={filters.flagged}
+                className="rounded border-zinc-700 bg-zinc-900 text-gold focus:ring-gold/40"
+              />
+              <span className="flex items-center gap-1">
+                <AlertTriangle className="w-3.5 h-3.5 text-red-400" />
+                Flagged for anomaly review only
+              </span>
+            </label>
+          </div>
           <div className="lg:col-span-5 flex gap-3">
             <button
               type="submit"
@@ -171,7 +201,7 @@ export default async function TransactionsLedgerPage({
             >
               Apply Filters
             </button>
-            {(filters.q || filters.type || filters.status || filters.asset) && (
+            {(filters.q || filters.type || filters.status || filters.asset || filters.flagged) && (
               <Link
                 href="/admin/transactions"
                 className="inline-flex items-center justify-center rounded-lg border border-zinc-800/60 text-zinc-400 hover:text-zinc-200 text-sm py-2.5 px-4 transition"
@@ -254,7 +284,18 @@ export default async function TransactionsLedgerPage({
                       )}
                     </td>
                     <td className="py-3">
-                      <StatusBadge status={t.status} />
+                      <div className="flex items-center gap-2">
+                        <StatusBadge status={t.status} />
+                        {t.flaggedForReview && (
+                          <span
+                            title={t.flagReason ?? undefined}
+                            className="inline-flex items-center gap-1 rounded-full border border-red-500/30 bg-red-500/10 px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-red-400"
+                          >
+                            <AlertTriangle className="w-3 h-3" />
+                            Anomaly
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="py-3 text-zinc-500 whitespace-nowrap">
                       {t.createdAt.toLocaleDateString()}

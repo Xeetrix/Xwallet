@@ -9,6 +9,8 @@ import { fetchUsdPrices } from "@/lib/pricing";
 import { sendTransactionEmail } from "@/lib/email";
 import { checkTransactionLimits } from "@/lib/limits";
 import { verifyTotpOrBackupCode } from "@/lib/totp-challenge";
+import { writeLedgerEntries, SYSTEM_RESERVE_ACCOUNT, GAS_FEE_COLLECTOR_ACCOUNT } from "@/lib/ledger";
+import { checkVelocityAnomaly } from "@/lib/velocity";
 
 const fmt = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: 8 });
 
@@ -209,6 +211,15 @@ export async function transferAsset(
     return { error: totpCheck.error, success: false };
   }
 
+  // Advisory-only — never blocks the transfer, just tags the row it
+  // creates below for admin review.
+  const velocityCheck = await checkVelocityAnomaly({
+    userId: session.sub,
+    assetId,
+    amount,
+    type: "TRANSFER_SENT",
+  });
+
   try {
     await prisma.$transaction(async (tx) => {
       // Atomic conditional update: only debits if the balance still covers
@@ -242,7 +253,7 @@ export async function transferAsset(
         update: { balance: { increment: amount } },
       });
 
-      await tx.transaction.create({
+      const senderTx = await tx.transaction.create({
         data: {
           userId: session.sub,
           assetId,
@@ -254,6 +265,8 @@ export async function transferAsset(
           counterpartyEmail: recipient.email,
           status: "APPROVED",
           referenceNote: `Sent ${amount.toLocaleString(undefined, { maximumFractionDigits: 8 })} ${asset.symbol} to ${recipient.email} via ${networkName} — network fee ${feeInGasAsset.toLocaleString(undefined, { maximumFractionDigits: 8 })} ${gasAssetSymbol}`,
+          flaggedForReview: velocityCheck.flagged,
+          flagReason: velocityCheck.reason,
         },
       });
 
@@ -269,6 +282,19 @@ export async function transferAsset(
           referenceNote: `Received ${amount.toLocaleString(undefined, { maximumFractionDigits: 8 })} ${asset.symbol} from ${session.email}`,
         },
       });
+
+      // Double-entry: principal moves sender -> recipient (balances per
+      // asset), fee moves sender -> the platform's fee-collector account.
+      // All four entries are attached to the sender's TRANSFER_SENT row —
+      // the recipient's TRANSFER_RECEIVED row is the other Transaction
+      // record this same event produces, but LedgerEntry only needs one
+      // anchor per event.
+      await writeLedgerEntries(tx, senderTx.id, [
+        { accountId: session.sub, assetId, direction: "DEBIT", amount },
+        { accountId: recipient.id, assetId, direction: "CREDIT", amount },
+        { accountId: session.sub, assetId: gasAsset.id, direction: "DEBIT", amount: feeInGasAsset },
+        { accountId: GAS_FEE_COLLECTOR_ACCOUNT, assetId: gasAsset.id, direction: "CREDIT", amount: feeInGasAsset },
+      ]);
     });
   } catch (error) {
     if (error instanceof InsufficientBalanceError) {
@@ -387,6 +413,15 @@ export async function requestWithdrawal(
     return { error: totpCheck.error, success: false };
   }
 
+  // Advisory-only — never blocks the withdrawal, just tags the row it
+  // creates below for admin review.
+  const velocityCheck = await checkVelocityAnomaly({
+    userId: session.sub,
+    assetId,
+    amount,
+    type: "WITHDRAWAL",
+  });
+
   try {
     await prisma.$transaction(async (tx) => {
       // Reserve the funds immediately (same conditional-update pattern used
@@ -410,7 +445,7 @@ export async function requestWithdrawal(
         throw new InsufficientGasAssetError(gasAssetSymbol);
       }
 
-      await tx.transaction.create({
+      const withdrawalTx = await tx.transaction.create({
         data: {
           userId: session.sub,
           assetId,
@@ -422,8 +457,23 @@ export async function requestWithdrawal(
           destinationAddress,
           status: "PENDING",
           referenceNote: `Withdrawal request: ${amount.toLocaleString(undefined, { maximumFractionDigits: 8 })} ${asset.symbol} to ${destinationAddress} via ${networkName} — network fee ${feeInGasAsset.toLocaleString(undefined, { maximumFractionDigits: 8 })} ${gasAssetSymbol}`,
+          flaggedForReview: velocityCheck.flagged,
+          flagReason: velocityCheck.reason,
         },
       });
+
+      // Double-entry: funds leave the client's balance into the platform's
+      // reserve account (they're queued to leave custody entirely once the
+      // withdrawal executes — see reviewWithdrawal/executeQueuedWithdrawal),
+      // and the fee leaves separately into the fee-collector account. If
+      // this request is later rejected, reviewWithdrawal writes the exact
+      // reversal of these same entries.
+      await writeLedgerEntries(tx, withdrawalTx.id, [
+        { accountId: session.sub, assetId, direction: "DEBIT", amount },
+        { accountId: SYSTEM_RESERVE_ACCOUNT, assetId, direction: "CREDIT", amount },
+        { accountId: session.sub, assetId: gasAsset.id, direction: "DEBIT", amount: feeInGasAsset },
+        { accountId: GAS_FEE_COLLECTOR_ACCOUNT, assetId: gasAsset.id, direction: "CREDIT", amount: feeInGasAsset },
+      ]);
     });
   } catch (error) {
     if (error instanceof InsufficientBalanceError) {
@@ -585,7 +635,7 @@ export async function convertAsset(
         update: { balance: { increment: receiveAmount } },
       });
 
-      await tx.transaction.create({
+      const debitTx = await tx.transaction.create({
         data: {
           userId: session.sub,
           assetId: fromAssetId,
@@ -610,6 +660,20 @@ export async function convertAsset(
           referenceNote: `Received from converting ${amount.toLocaleString(undefined, { maximumFractionDigits: 8 })} ${fromAsset.symbol} at ${rateNote}`,
         },
       });
+
+      // Double-entry: a swap is modeled as the client selling fromAsset to
+      // the platform's reserve and buying toAsset from it — each asset's
+      // entries balance independently (debit client = credit reserve for
+      // fromAsset; credit client = debit reserve for toAsset), plus the
+      // fee leaving separately into the fee-collector account.
+      await writeLedgerEntries(tx, debitTx.id, [
+        { accountId: session.sub, assetId: fromAssetId, direction: "DEBIT", amount },
+        { accountId: SYSTEM_RESERVE_ACCOUNT, assetId: fromAssetId, direction: "CREDIT", amount },
+        { accountId: SYSTEM_RESERVE_ACCOUNT, assetId: toAssetId, direction: "DEBIT", amount: receiveAmount },
+        { accountId: session.sub, assetId: toAssetId, direction: "CREDIT", amount: receiveAmount },
+        { accountId: session.sub, assetId: gasAsset.id, direction: "DEBIT", amount: feeInGasAsset },
+        { accountId: GAS_FEE_COLLECTOR_ACCOUNT, assetId: gasAsset.id, direction: "CREDIT", amount: feeInGasAsset },
+      ]);
     });
   } catch (error) {
     if (error instanceof InsufficientBalanceError) {

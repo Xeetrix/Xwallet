@@ -19,6 +19,7 @@ export async function GET(request: NextRequest) {
   const q = searchParams.get("q");
   const fromParam = searchParams.get("from");
   const toParam = searchParams.get("to");
+  const flagged = searchParams.get("flagged");
 
   const where: Prisma.TransactionWhereInput = {};
   if (userId) where.userId = userId;
@@ -26,6 +27,7 @@ export async function GET(request: NextRequest) {
   if (assetSymbol) where.asset = { symbol: assetSymbol.toUpperCase() };
   if (type) where.type = type as TransactionType;
   if (status) where.status = status as TransactionStatus;
+  if (flagged === "1") where.flaggedForReview = true;
   if (q) {
     where.user = {
       OR: [
@@ -61,6 +63,8 @@ export async function GET(request: NextRequest) {
     t.txHash ?? "",
     t.status,
     t.referenceNote ?? "",
+    t.flaggedForReview ? "YES" : "",
+    t.flagReason ?? "",
   ]);
 
   const csv = toCsv(
@@ -77,6 +81,8 @@ export async function GET(request: NextRequest) {
       "Transaction Hash",
       "Status",
       "Reference",
+      "Flagged",
+      "Flag Reason",
     ],
     rows
   );
